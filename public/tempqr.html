@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADC-100 Temp QR</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #0A0E1A;
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: #131929;
+            border-bottom: 1px solid #00C2FF;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .navbar .logo { color: #00C2FF; font-size: 12px; letter-spacing: 2px; }
+        .navbar h1 { font-size: 18px; color: #fff; }
+        .navbar-right { display: flex; align-items: center; gap: 12px; }
+        .nav-link {
+            color: #8A9BB5;
+            text-decoration: none;
+            font-size: 13px;
+            padding: 6px 14px;
+            border: 1px solid #1e2d4a;
+            border-radius: 6px;
+        }
+        .nav-link:hover { border-color: #00C2FF; color: #00C2FF; }
+        .logout-btn {
+            background: none;
+            border: 1px solid #FF4C4C;
+            color: #FF4C4C;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        .logout-btn:hover { background: #FF4C4C; color: #fff; }
+
+        .container { padding: 32px; max-width: 800px; margin: 0 auto; }
+
+        .card {
+            background: #131929;
+            border: 1px solid #1e2d4a;
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+        .card h3 {
+            color: #00C2FF;
+            font-size: 14px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 13px; color: #8A9BB5; margin-bottom: 6px; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            background: #0A0E1A;
+            border: 1px solid #1e2d4a;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #00C2FF;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary   { background: #00C2FF; color: #0A0E1A; width: 100%; margin-top: 8px; }
+        .btn-primary:hover { background: #0066FF; color: #fff; }
+        .btn-success   { background: #00E5A0; color: #0A0E1A; }
+        .btn-success:hover { background: #00b87a; }
+        .btn-secondary { background: #1e2d4a; color: #fff; }
+        .btn-secondary:hover { background: #2a3d5e; }
+
+        /* QR Result */
+        .qr-result { display: none; }
+        .qr-result.show { display: block; }
+
+        .qr-center {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #fff;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+        .qr-info {
+            margin-top: 12px;
+            text-align: center;
+        }
+        .qr-info .label { font-size: 11px; color: #666; letter-spacing: 1px; }
+        .qr-info .validity {
+            font-size: 13px;
+            color: #0A0E1A;
+            font-weight: bold;
+            margin-top: 4px;
+        }
+        .qr-logo { font-size: 10px; color: #999; letter-spacing: 2px; margin-top: 4px; }
+
+        .share-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        @media (max-width: 600px) { .share-section { grid-template-columns: 1fr; } }
+
+        .share-btn {
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .share-whatsapp { background: #25D366; color: #fff; }
+        .share-whatsapp:hover { background: #1da851; }
+        .share-email    { background: #EA4335; color: #fff; }
+        .share-email:hover { background: #c0392b; }
+        .share-print    { background: #1e2d4a; color: #fff; }
+        .share-print:hover { background: #2a3d5e; }
+        .share-copy     { background: #00C2FF; color: #0A0E1A; }
+        .share-copy:hover { background: #0066FF; color: #fff; }
+
+        .validity-badge {
+            display: inline-block;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 16px;
+        }
+        .validity-valid   { background: #00E5A020; color: #00E5A0; border: 1px solid #00E5A0; }
+        .validity-expired { background: #FF4C4C20; color: #FF4C4C; border: 1px solid #FF4C4C; }
+
+        .token-box {
+            background: #0A0E1A;
+            border: 1px solid #1e2d4a;
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #8A9BB5;
+            word-break: break-all;
+            margin-top: 12px;
+        }
+
+        /* Print */
+        @media print {
+            body * { visibility: hidden; }
+            #printArea, #printArea * { visibility: visible; }
+            #printArea {
+                position: fixed;
+                top: 50%; left: 50%;
+                transform: translate(-50%, -50%);
+                text-align: center;
+            }
+        }
+        #printArea { display: none; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="navbar">
+        <div>
+            <div class="logo">INNOVOLTX</div>
+            <h1>Temporary QR Access</h1>
+        </div>
+        <div class="navbar-right">
+            <a class="nav-link" href="/">← Devices</a>
+            <button class="logout-btn" onclick="window.location='/api/logout'">Logout</button>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <!-- Generator Card -->
+        <div class="card">
+            <h3>Generate Temporary Access QR</h3>
+
+            <div class="form-group">
+                <label>Device</label>
+                <select id="deviceSelect">
+                    <option value="">Loading devices...</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Start Date & Time</label>
+                    <input type="datetime-local" id="iatInput">
+                </div>
+                <div class="form-group">
+                    <label>End Date & Time</label>
+                    <input type="datetime-local" id="expInput">
+                </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="generateTempQR()">🔐 Generate QR</button>
+        </div>
+
+        <!-- QR Result -->
+        <div class="card qr-result" id="qrResult">
+            <h3>Temporary QR Code</h3>
+
+            <div style="text-align:center; margin-bottom:12px;">
+                <span class="validity-badge validity-valid" id="validityBadge">✅ Valid</span>
+            </div>
+
+            <div class="qr-center">
+                <div id="qrCode"></div>
+                <div class="qr-info">
+                    <div class="label">TEMPORARY ACCESS</div>
+                    <div class="validity" id="qrValidityText">—</div>
+                    <div class="qr-logo">INNOVOLTX — ADC-100</div>
+                </div>
+            </div>
+
+            <div class="share-section">
+                <button class="share-btn share-whatsapp" onclick="shareWhatsApp()">📱 WhatsApp</button>
+                <button class="share-btn share-email"    onclick="shareEmail()">📧 Email</button>
+                <button class="share-btn share-copy"     onclick="copyToken()">📋 Copy Token</button>
+                <button class="share-btn share-print"    onclick="printQR()">🖨️ Print</button>
+            </div>
+
+            <div class="token-box" id="tokenBox">—</div>
+        </div>
+
+    </div>
+
+    <!-- Print Area -->
+    <div id="printArea">
+        <div id="printQR"></div>
+        <div style="font-family:monospace; font-size:12px; font-weight:bold; margin-top:8px;" id="printValidity"></div>
+        <div style="font-size:10px; color:#666; letter-spacing:2px; margin-top:4px;">INNOVOLTX — ADC-100 TEMP ACCESS</div>
+    </div>
+
+    <script>
+        let currentToken = null;
+        let currentDevice = null;
+        let qrInstance = null;
+
+        /* Load devices */
+        async function loadDevices() {
+            const res     = await fetch('/api/devices');
+            const devices = await res.json();
+            const sel     = document.getElementById('deviceSelect');
+
+            if (devices.length === 0) {
+                sel.innerHTML = '<option value="">No devices found</option>';
+                return;
+            }
+
+            sel.innerHTML = devices
+                .filter(d => d.activated)
+                .map(d => `<option value="${d.id}" data-name="${d.name || d.serial}">${d.name || 'Unnamed'} — ${d.serial}</option>`)
+                .join('');
+        }
+
+        /* Set default datetime values */
+        function setDefaultDates() {
+            const now   = new Date();
+            const later = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+            const fmt = d => d.toISOString().slice(0, 16);
+            document.getElementById('iatInput').value = fmt(now);
+            document.getElementById('expInput').value = fmt(later);
+        }
+
+        async function generateTempQR() {
+            const deviceId = document.getElementById('deviceSelect').value;
+            const iat      = document.getElementById('iatInput').value;
+            const exp      = document.getElementById('expInput').value;
+
+            if (!deviceId) { alert('Please select a device'); return; }
+            if (!iat || !exp) { alert('Please set start and end date'); return; }
+            if (new Date(exp) <= new Date(iat)) { alert('End must be after start'); return; }
+
+            const res  = await fetch('/api/devices/temp-qr', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ iat, exp })
+            });
+            const data = await res.json();
+            if (!res.ok) { alert('Error: ' + data.error); return; }
+
+            currentToken  = data.token;
+            currentDevice = document.getElementById('deviceSelect').options[
+                document.getElementById('deviceSelect').selectedIndex
+            ].dataset.name;
+
+            /* Show QR */
+            const qrDiv = document.getElementById('qrCode');
+            qrDiv.innerHTML = '';
+            if (qrInstance) qrInstance.clear();
+            qrInstance = new QRCode(qrDiv, {
+                text:         currentToken,
+                width:        200,
+                height:       200,
+                colorDark:    '#000000',
+                colorLight:   '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            /* Validity text */
+            const iatDate = new Date(iat);
+            const expDate = new Date(exp);
+            const fmt = d => d.toLocaleString();
+            document.getElementById('qrValidityText').textContent =
+                `${fmt(iatDate)} → ${fmt(expDate)}`;
+            document.getElementById('tokenBox').textContent = currentToken;
+
+            document.getElementById('qrResult').classList.add('show');
+            document.getElementById('qrResult').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function shareWhatsApp() {
+            if (!currentToken) return;
+            const msg = encodeURIComponent(
+                `🔐 Temporary Access QR\n\nDevice: ${currentDevice}\nValid: ${document.getElementById('qrValidityText').textContent}\n\nToken:\n${currentToken}`
+            );
+            window.open(`https://wa.me/?text=${msg}`, '_blank');
+        }
+
+        function shareEmail() {
+            if (!currentToken) return;
+            const subject = encodeURIComponent('Temporary Access QR — ADC-100');
+            const body    = encodeURIComponent(
+                `Temporary Access QR Code\n\nDevice: ${currentDevice}\nValid: ${document.getElementById('qrValidityText').textContent}\n\nToken:\n${currentToken}\n\n-- INNOVOLTX`
+            );
+            window.open(`mailto:?subject=${subject}&body=${body}`);
+        }
+
+        async function copyToken() {
+            if (!currentToken) return;
+            await navigator.clipboard.writeText(currentToken);
+            alert('Token copied to clipboard!');
+        }
+
+        function printQR() {
+            const printQR = document.getElementById('printQR');
+            printQR.innerHTML = '';
+            new QRCode(printQR, {
+                text:         currentToken,
+                width:        220,
+                height:       220,
+                colorDark:    '#000000',
+                colorLight:   '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            document.getElementById('printValidity').textContent =
+                document.getElementById('qrValidityText').textContent;
+            document.getElementById('printArea').style.display = 'block';
+            window.print();
+            document.getElementById('printArea').style.display = 'none';
+        }
+
+        loadDevices();
+        setDefaultDates();
+    </script>
+
+</body>
+</html>

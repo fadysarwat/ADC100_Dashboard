@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADC-100 Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #0A0E1A;
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: #131929;
+            border-bottom: 1px solid #00C2FF;
+            padding: 12px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .navbar .logo { color: #00C2FF; font-size: 12px; letter-spacing: 2px; }
+        .navbar h1 { font-size: 18px; color: #fff; }
+
+        .navbar-clocks {
+            display: flex;
+            gap: 24px;
+            text-align: center;
+        }
+        .clock-item .clock-label {
+            font-size: 10px;
+            color: #8A9BB5;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .clock-item .clock-time {
+            font-size: 13px;
+            font-weight: bold;
+            margin-top: 2px;
+        }
+        .clock-item .clock-time.local    { color: #fff; }
+        .clock-item .clock-time.slovenia { color: #00C2FF; }
+
+        .navbar-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .nav-link {
+            color: #8A9BB5;
+            text-decoration: none;
+            font-size: 13px;
+            padding: 6px 14px;
+            border: 1px solid #1e2d4a;
+            border-radius: 6px;
+        }
+        .nav-link:hover { border-color: #00C2FF; color: #00C2FF; }
+        .logout-btn {
+            background: none;
+            border: 1px solid #FF4C4C;
+            color: #FF4C4C;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        .logout-btn:hover { background: #FF4C4C; color: #fff; }
+
+        .container { padding: 32px; max-width: 1200px; margin: 0 auto; }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .topbar h2 { font-size: 20px; color: #fff; }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary   { background: #00C2FF; color: #0A0E1A; }
+        .btn-primary:hover { background: #0066FF; color: #fff; }
+        .btn-success   { background: #00E5A0; color: #0A0E1A; }
+        .btn-success:hover { background: #00b87a; }
+        .btn-danger    { background: #FF4C4C; color: #fff; }
+        .btn-danger:hover { background: #cc0000; }
+        .btn-secondary { background: #1e2d4a; color: #fff; }
+        .btn-secondary:hover { background: #2a3d5e; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+        .devices-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 20px;
+        }
+
+        .device-card {
+            background: #131929;
+            border: 1px solid #1e2d4a;
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .device-card.activated { border-color: #00C2FF; }
+        .device-card.pending   { border-color: #FFB347; }
+
+        .device-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+        .device-name   { font-size: 16px; font-weight: bold; }
+        .device-serial { font-size: 12px; color: #8A9BB5; margin-top: 4px; }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .badge-online  { background: #00E5A020; color: #00E5A0; border: 1px solid #00E5A0; }
+        .badge-offline { background: #FF4C4C20; color: #FF4C4C; border: 1px solid #FF4C4C; }
+        .badge-pending { background: #FFB34720; color: #FFB347; border: 1px solid #FFB347; }
+
+        .device-info { font-size: 13px; color: #8A9BB5; margin-bottom: 16px; }
+        .device-info span { display: block; margin-bottom: 4px; }
+
+        .device-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        .empty {
+            text-align: center;
+            padding: 80px 20px;
+            color: #8A9BB5;
+        }
+        .empty h3 { font-size: 18px; margin-bottom: 8px; color: #fff; }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #00000080;
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active { display: flex; }
+
+        .modal {
+            background: #131929;
+            border: 1px solid #00C2FF;
+            border-radius: 12px;
+            padding: 32px;
+            width: 460px;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        .modal h3 { color: #00C2FF; margin-bottom: 20px; }
+
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 13px; color: #8A9BB5; margin-bottom: 6px; }
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            background: #0A0E1A;
+            border: 1px solid #1e2d4a;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+        }
+        .form-group input:focus { outline: none; border-color: #00C2FF; }
+
+        .serial-row { display: flex; gap: 8px; flex-wrap: wrap; }
+        .serial-row input { flex: 1; font-family: monospace; min-width: 160px; }
+        .serial-row button { white-space: nowrap; padding: 10px 12px; font-size: 12px; }
+
+        .qr-section {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            background: #fff;
+            border-radius: 10px;
+            padding: 16px;
+            margin: 16px 0;
+        }
+        .qr-section.show { display: flex; }
+        .qr-serial-text {
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #0A0E1A;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }
+        .qr-logo { font-size: 10px; color: #8A9BB5; margin-top: 4px; letter-spacing: 2px; }
+
+        .modal-actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+        .btn-cancel { background: #1e2d4a; color: #fff; }
+        .btn-cancel:hover { background: #2a3d5e; }
+
+        .serial-list {
+            display: none;
+            max-height: 160px;
+            overflow-y: auto;
+            border: 1px solid #1e2d4a;
+            border-radius: 6px;
+            margin-top: 8px;
+        }
+        .serial-list.show { display: block; }
+        .serial-list-item {
+            padding: 10px 12px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #00C2FF;
+            cursor: pointer;
+            border-bottom: 1px solid #0d1525;
+        }
+        .serial-list-item:hover { background: #1e2d4a; }
+        .serial-list-empty { padding: 10px 12px; color: #8A9BB5; font-size: 13px; }
+
+        @media print {
+            body * { visibility: hidden; }
+            #printArea, #printArea * { visibility: visible; }
+            #printArea {
+                position: fixed;
+                top: 50%; left: 50%;
+                transform: translate(-50%, -50%);
+                text-align: center;
+            }
+        }
+        #printArea { display: none; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="navbar">
+        <div>
+            <div class="logo">INNOVOLTX</div>
+            <h1>ADC-100 Dashboard</h1>
+        </div>
+
+        <div class="navbar-clocks">
+            <div class="clock-item">
+                <div class="clock-label">🇪🇬 Egypt</div>
+                <div class="clock-time local" id="localTime">—</div>
+            </div>
+            <div class="clock-item">
+                <div class="clock-label">🇸🇮 Slovenia</div>
+                <div class="clock-time slovenia" id="sloveniaTime">—</div>
+            </div>
+        </div>
+
+        <div class="navbar-right">
+            <a class="nav-link" href="/serials.html">🔲 Serials</a>
+            <a class="nav-link" href="/tempqr.html">🔐 Temp QR</a>
+            <a class="nav-link" href="/appusers.html">👥 App Users</a>
+            <a class="nav-link" href="/temppin.html">🔑 Temp PIN</a>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+            <button class="nav-link" onclick="openChangePassword()" style="cursor:pointer;">🔒 Password</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="topbar">
+            <h2>Devices</h2>
+            <button class="btn btn-primary" onclick="openAddModal()">+ Add Device</button>
+        </div>
+
+        <div class="devices-grid" id="devicesGrid">
+            <div class="empty">
+                <h3>No devices yet</h3>
+                <p>Click "Add Device" to register your first ADC-100</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden print area -->
+    <div id="printArea">
+        <div id="printQR"></div>
+        <div style="font-family:monospace; font-size:14px; font-weight:bold; margin-top:8px;" id="printSerial"></div>
+        <div style="font-size:10px; color:#666; letter-spacing:2px; margin-top:4px;">INNOVOLTX — ADC-100</div>
+    </div>
+
+    <!-- Add Device Modal -->
+    <div class="modal-overlay" id="addModal">
+        <div class="modal">
+            <h3>Add New Device</h3>
+
+            <div class="form-group">
+                <label>Serial Number *</label>
+                <div class="serial-row">
+                    <input type="text" id="inputSerial" placeholder="Generate or pick existing..." readonly>
+                    <button class="btn btn-secondary" onclick="generateSerial()">🔄 New</button>
+                    <button class="btn btn-secondary" onclick="togglePickSerial()">📋 Pick</button>
+                </div>
+                <div class="serial-list" id="serialList"></div>
+            </div>
+
+            <div class="qr-section" id="qrSection">
+                <div id="qrCode"></div>
+                <div class="qr-serial-text" id="qrSerialText"></div>
+                <div class="qr-logo">INNOVOLTX — ADC-100</div>
+            </div>
+
+            <div class="form-group">
+                <label>MQTT ID (firmware device_id)</label>
+                <input type="text" id="inputMqttId" placeholder="e.g. ctrl_001">
+            </div>
+            <div class="form-group">
+                <label>Device Name</label>
+                <input type="text" id="inputName" placeholder="e.g. Main Entrance">
+            </div>
+            <div class="form-group">
+                <label>Location</label>
+                <input type="text" id="inputLocation" placeholder="e.g. Building A">
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="addDevice()">Add Device</button>
+                <button class="btn btn-success" id="printBtn" onclick="printSerial()" style="display:none;">🖨️ Print QR</button>
+                <button class="btn btn-cancel" onclick="closeAddModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let devices    = [];
+        let firstLoad  = true;
+        let qrInstance = null;
+        let unassignedSerials = [];
+
+        /* ── Clocks ── */
+        function updateClocks() {
+            const now = new Date();
+            document.getElementById('localTime').textContent =
+                now.toLocaleString('en-GB', { timeZone: 'Africa/Cairo', hour12: false });
+            document.getElementById('sloveniaTime').textContent =
+                now.toLocaleString('en-GB', { timeZone: 'Europe/Ljubljana', hour12: false });
+        }
+        updateClocks();
+        setInterval(updateClocks, 1000);
+
+        async function loadDevices() {
+            const res  = await fetch('/api/devices');
+            const data = await res.json();
+
+            if (firstLoad) {
+                devices   = data;
+                firstLoad = false;
+                renderDevices();
+            } else {
+                data.forEach(d => {
+                    const badge = document.getElementById(`badge-${d.id}`);
+                    if (!badge) return;
+                    const newClass = d.status === 'online' ? 'badge badge-online'
+                                   : d.activated           ? 'badge badge-offline'
+                                   : 'badge badge-pending';
+                    const newText  = d.status === 'online' ? 'ONLINE'
+                                   : d.activated           ? 'OFFLINE'
+                                   : 'PENDING';
+                    badge.className   = newClass;
+                    badge.textContent = newText;
+                });
+                devices = data;
+            }
+        }
+
+        function renderDevices() {
+            const grid = document.getElementById('devicesGrid');
+
+            if (devices.length === 0) {
+                grid.innerHTML = `
+                    <div class="empty">
+                        <h3>No devices yet</h3>
+                        <p>Click "Add Device" to register your first ADC-100</p>
+                    </div>`;
+                return;
+            }
+
+            grid.innerHTML = devices.map(d => {
+                const statusClass = d.status === 'online' ? 'badge badge-online'
+                                  : d.activated           ? 'badge badge-offline'
+                                  : 'badge badge-pending';
+                const statusText  = d.status === 'online' ? 'ONLINE'
+                                  : d.activated           ? 'OFFLINE'
+                                  : 'PENDING';
+                const activateBtn = !d.activated
+                    ? `<button class="btn btn-success btn-sm" onclick="activateDevice(${d.id})">Activate</button>`
+                    : '';
+
+                return `
+                    <div class="device-card ${d.activated ? 'activated' : 'pending'}" id="card-${d.id}">
+                        <div class="device-header">
+                            <div>
+                                <div class="device-name">${d.name || 'Unnamed Device'}</div>
+                                <div class="device-serial">S/N: ${d.serial}</div>
+                                <div class="device-serial">MQTT: ${d.mqtt_id || '—'}</div>
+                            </div>
+                            <span class="${statusClass}" id="badge-${d.id}">${statusText}</span>
+                        </div>
+                        <div class="device-info">
+                            <span>📍 ${d.location || '—'}</span>
+                            <span>📅 Added: ${new Date(d.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <div class="device-actions">
+                            <button class="btn btn-primary btn-sm" onclick="window.location='device.html?id=${d.id}&serial=${d.serial}'">Details</button>
+                            ${activateBtn}
+                            <button class="btn btn-danger btn-sm" onclick="deleteDevice(${d.id})">Delete</button>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        /* WebSocket */
+        function connectWS() {
+            const ws = new WebSocket(`ws://${location.host}`);
+            ws.onmessage = (e) => {
+                const msg = JSON.parse(e.data);
+                if (msg.type === 'status' || msg.type === 'heartbeat') {
+                    const badge = document.getElementById(`badge-${msg.deviceId}`);
+                    if (!badge) return;
+                    const status = msg.type === 'heartbeat' ? 'online' : msg.data.status;
+                    badge.className   = status === 'online' ? 'badge badge-online' : 'badge badge-offline';
+                    badge.textContent = status === 'online' ? 'ONLINE' : 'OFFLINE';
+                }
+            };
+            ws.onclose = () => setTimeout(connectWS, 3000);
+        }
+
+        async function generateSerial() {
+            const res    = await fetch('/api/devices/generate-serial', { method: 'POST' });
+            const data   = await res.json();
+            setSerial(data.serial);
+            document.getElementById('serialList').classList.remove('show');
+        }
+
+        async function togglePickSerial() {
+            const list = document.getElementById('serialList');
+            if (list.classList.contains('show')) {
+                list.classList.remove('show');
+                return;
+            }
+
+            const res     = await fetch('/api/devices/serials');
+            const serials = await res.json();
+            unassignedSerials = serials.filter(s => !s.device_id);
+
+            if (unassignedSerials.length === 0) {
+                list.innerHTML = '<div class="serial-list-empty">No unassigned serials</div>';
+            } else {
+                list.innerHTML = unassignedSerials.map(s => `
+                    <div class="serial-list-item" onclick="pickSerial('${s.serial}')">
+                        ${s.serial}
+                    </div>`).join('');
+            }
+            list.classList.add('show');
+        }
+
+        function pickSerial(serial) {
+            setSerial(serial);
+            document.getElementById('serialList').classList.remove('show');
+        }
+
+        function setSerial(serial) {
+            document.getElementById('inputSerial').value        = serial;
+            document.getElementById('qrSerialText').textContent = serial;
+
+            const qrDiv = document.getElementById('qrCode');
+            qrDiv.innerHTML = '';
+            if (qrInstance) qrInstance.clear();
+            qrInstance = new QRCode(qrDiv, {
+                text:         serial,
+                width:        160,
+                height:       160,
+                colorDark:    '#000000',
+                colorLight:   '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+
+            const printQR = document.getElementById('printQR');
+            printQR.innerHTML = '';
+            new QRCode(printQR, {
+                text:         serial,
+                width:        200,
+                height:       200,
+                colorDark:    '#000000',
+                colorLight:   '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            document.getElementById('printSerial').textContent = serial;
+            document.getElementById('qrSection').classList.add('show');
+            document.getElementById('printBtn').style.display = 'block';
+        }
+
+        function printSerial() {
+            document.getElementById('printArea').style.display = 'block';
+            window.print();
+            document.getElementById('printArea').style.display = 'none';
+        }
+
+        function openAddModal()  { document.getElementById('addModal').classList.add('active'); }
+        function closeAddModal() {
+            document.getElementById('addModal').classList.remove('active');
+            document.getElementById('inputSerial').value    = '';
+            document.getElementById('inputMqttId').value    = '';
+            document.getElementById('inputName').value      = '';
+            document.getElementById('inputLocation').value  = '';
+            document.getElementById('qrSection').classList.remove('show');
+            document.getElementById('printBtn').style.display = 'none';
+            document.getElementById('qrCode').innerHTML     = '';
+            document.getElementById('serialList').classList.remove('show');
+            qrInstance = null;
+        }
+
+        async function addDevice() {
+            const serial   = document.getElementById('inputSerial').value.trim();
+            const mqtt_id  = document.getElementById('inputMqttId').value.trim();
+            const name     = document.getElementById('inputName').value.trim();
+            const location = document.getElementById('inputLocation').value.trim();
+
+            if (!serial)  { alert('Generate or pick a serial number first'); return; }
+            if (!mqtt_id) { alert('MQTT ID is required'); return; }
+
+            const res = await fetch('/api/devices', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ serial, mqtt_id, name, location })
+            });
+
+            if (res.ok) {
+                closeAddModal();
+                firstLoad = true;
+                loadDevices();
+            } else {
+                const err = await res.json();
+                alert('Error: ' + err.error);
+            }
+        }
+
+        async function activateDevice(id) {
+            const res = await fetch(`/api/devices/${id}/activate`, { method: 'POST' });
+            if (res.ok) { firstLoad = true; loadDevices(); }
+        }
+
+        async function deleteDevice(id) {
+            if (!confirm('Delete this device?')) return;
+            const res = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
+            if (res.ok) { firstLoad = true; loadDevices(); }
+        }
+
+        async function logout() { window.location = '/api/logout'; }
+        function openChangePassword() {
+    document.getElementById('changePassModal').classList.add('active');
+}
+function closeChangePassword() {
+    document.getElementById('changePassModal').classList.remove('active');
+    document.getElementById('currentPass').value  = '';
+    document.getElementById('newPass').value      = '';
+    document.getElementById('confirmPass').value  = '';
+    document.getElementById('passMsg').style.display = 'none';
+}
+
+async function changePassword() {
+    const current = document.getElementById('currentPass').value;
+    const newPass = document.getElementById('newPass').value;
+    const confirm = document.getElementById('confirmPass').value;
+    const msg     = document.getElementById('passMsg');
+
+    if (!current || !newPass || !confirm) {
+        msg.textContent   = '❌ All fields required';
+        msg.style.color   = '#FF4C4C';
+        msg.style.display = 'block';
+        return;
+    }
+    if (newPass !== confirm) {
+        msg.textContent   = '❌ Passwords do not match';
+        msg.style.color   = '#FF4C4C';
+        msg.style.display = 'block';
+        return;
+    }
+    if (newPass.length < 6) {
+        msg.textContent   = '❌ Password must be at least 6 characters';
+        msg.style.color   = '#FF4C4C';
+        msg.style.display = 'block';
+        return;
+    }
+
+    const res  = await fetch('/api/change-password', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ current_password: current, new_password: newPass })
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+        msg.textContent   = '✅ Password changed successfully';
+        msg.style.color   = '#00E5A0';
+        msg.style.display = 'block';
+        setTimeout(closeChangePassword, 2000);
+    } else {
+        msg.textContent   = '❌ ' + data.error;
+        msg.style.color   = '#FF4C4C';
+        msg.style.display = 'block';
+    }
+}
+
+        loadDevices();
+        setInterval(loadDevices, 30000);
+        connectWS();
+    </script>
+
+<!-- Change Password Modal -->
+<div class="modal-overlay" id="changePassModal">
+    <div class="modal">
+        <h3>Change Password</h3>
+        <div class="form-group">
+            <label>Current Password</label>
+            <input type="password" id="currentPass" placeholder="••••••••">
+        </div>
+        <div class="form-group">
+            <label>New Password</label>
+            <input type="password" id="newPass" placeholder="••••••••">
+        </div>
+        <div class="form-group">
+            <label>Confirm New Password</label>
+            <input type="password" id="confirmPass" placeholder="••••••••">
+        </div>
+        <div id="passMsg" style="font-size:13px; margin-top:8px; display:none;"></div>
+        <div class="modal-actions">
+            <button class="btn btn-primary" onclick="changePassword()">Save</button>
+            <button class="btn btn-cancel" onclick="closeChangePassword()">Cancel</button>
+        </div>
+    </div>
+</div>
+</body>
+</html>

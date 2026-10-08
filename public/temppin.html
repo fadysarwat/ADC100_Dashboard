@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADC-100 Temp PIN</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #0A0E1A;
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: #131929;
+            border-bottom: 1px solid #00C2FF;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .navbar .logo { color: #00C2FF; font-size: 12px; letter-spacing: 2px; }
+        .navbar h1 { font-size: 18px; color: #fff; }
+        .navbar-right { display: flex; align-items: center; gap: 12px; }
+        .nav-link {
+            color: #8A9BB5;
+            text-decoration: none;
+            font-size: 13px;
+            padding: 6px 14px;
+            border: 1px solid #1e2d4a;
+            border-radius: 6px;
+        }
+        .nav-link:hover { border-color: #00C2FF; color: #00C2FF; }
+        .logout-btn {
+            background: none;
+            border: 1px solid #FF4C4C;
+            color: #FF4C4C;
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+        }
+        .logout-btn:hover { background: #FF4C4C; color: #fff; }
+
+        .container { padding: 32px; max-width: 800px; margin: 0 auto; }
+
+        .card {
+            background: #131929;
+            border: 1px solid #1e2d4a;
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+        .card h3 {
+            color: #00C2FF;
+            font-size: 14px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .card-header h3 { margin-bottom: 0; }
+
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 13px; color: #8A9BB5; margin-bottom: 6px; }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            background: #0A0E1A;
+            border: 1px solid #1e2d4a;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #00C2FF;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
+        .pin-row { display: flex; gap: 10px; }
+        .pin-row input { flex: 1; font-family: monospace; font-size: 20px; letter-spacing: 4px; text-align: center; }
+        .pin-row button { white-space: nowrap; padding: 10px 14px; font-size: 12px; }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary   { background: #00C2FF; color: #0A0E1A; width: 100%; margin-top: 8px; }
+        .btn-primary:hover { background: #0066FF; color: #fff; }
+        .btn-danger    { background: #FF4C4C; color: #fff; }
+        .btn-danger:hover { background: #cc0000; }
+        .btn-secondary { background: #1e2d4a; color: #fff; }
+        .btn-secondary:hover { background: #2a3d5e; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+        /* PIN Result */
+        .pin-result { display: none; }
+        .pin-result.show { display: block; }
+
+        .pin-display {
+            text-align: center;
+            padding: 32px;
+            background: #0A0E1A;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 2px solid #00C2FF;
+        }
+        .pin-display .pin-label { font-size: 12px; color: #8A9BB5; letter-spacing: 2px; margin-bottom: 12px; }
+        .pin-display .pin-number {
+            font-size: 64px;
+            font-weight: bold;
+            font-family: monospace;
+            color: #00C2FF;
+            letter-spacing: 16px;
+        }
+        .pin-display .pin-validity { font-size: 13px; color: #8A9BB5; margin-top: 12px; }
+
+        .share-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 16px;
+        }
+        @media (max-width: 600px) { .share-section { grid-template-columns: 1fr; } }
+
+        .share-btn {
+            padding: 10px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .share-whatsapp { background: #25D366; color: #fff; }
+        .share-whatsapp:hover { background: #1da851; }
+        .share-email    { background: #EA4335; color: #fff; }
+        .share-email:hover { background: #c0392b; }
+        .share-copy     { background: #00C2FF; color: #0A0E1A; }
+        .share-copy:hover { background: #0066FF; color: #fff; }
+
+        /* Active PINs table */
+        .pins-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .pins-table th {
+            text-align: left;
+            padding: 8px 12px;
+            color: #8A9BB5;
+            border-bottom: 1px solid #1e2d4a;
+            font-weight: normal;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+        .pins-table td { padding: 10px 12px; border-bottom: 1px solid #0d1525; }
+        .pins-table tr:hover td { background: #0d1525; }
+
+        .badge {
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .badge-active  { background: #00E5A020; color: #00E5A0; border: 1px solid #00E5A0; }
+        .badge-expired { background: #FF4C4C20; color: #FF4C4C; border: 1px solid #FF4C4C; }
+        .badge-pending { background: #FFB34720; color: #FFB347; border: 1px solid #FFB347; }
+
+        .empty { text-align: center; padding: 40px; color: #8A9BB5; }
+        .pin-mono { font-family: monospace; font-size: 20px; font-weight: bold; color: #00C2FF; letter-spacing: 4px; }
+    </style>
+</head>
+<body>
+
+    <div class="navbar">
+        <div>
+            <div class="logo">INNOVOLTX</div>
+            <h1>Temporary PIN Access</h1>
+        </div>
+        <div class="navbar-right">
+            <a class="nav-link" href="/">← Devices</a>
+            <button class="logout-btn" onclick="window.location='/api/logout'">Logout</button>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <!-- Generator Card -->
+        <div class="card">
+            <h3>Generate Temporary PIN</h3>
+
+            <div class="form-group">
+                <label>Device</label>
+                <select id="deviceSelect" onchange="loadPins()">
+                    <option value="">Loading devices...</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Label (optional)</label>
+                <input type="text" id="pinLabel" placeholder="e.g. John Visit">
+            </div>
+
+            <div class="form-group">
+                <label>PIN (4 digits — leave empty to auto-generate)</label>
+                <div class="pin-row">
+                    <input type="text" id="pinInput" maxlength="4" placeholder="AUTO"
+                           oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+                    <button class="btn btn-secondary" onclick="randomPin()">🎲 Random</button>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Start Date & Time</label>
+                    <input type="datetime-local" id="iatInput">
+                </div>
+                <div class="form-group">
+                    <label>End Date & Time</label>
+                    <input type="datetime-local" id="expInput">
+                </div>
+            </div>
+
+            <button class="btn btn-primary" onclick="generateTempPin()">🔑 Generate PIN</button>
+        </div>
+
+        <!-- PIN Result -->
+        <div class="card pin-result" id="pinResult">
+            <h3>Temporary PIN Code</h3>
+
+            <div class="pin-display">
+                <div class="pin-label">TEMPORARY ACCESS PIN</div>
+                <div class="pin-number" id="pinNumber">—</div>
+                <div class="pin-validity" id="pinValidity">—</div>
+            </div>
+
+            <div class="share-section">
+                <button class="share-btn share-whatsapp" onclick="shareWhatsApp()">📱 WhatsApp</button>
+                <button class="share-btn share-email"    onclick="shareEmail()">📧 Email</button>
+                <button class="share-btn share-copy"     onclick="copyPin()">📋 Copy PIN</button>
+            </div>
+        </div>
+
+        <!-- Active PINs -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Active & Recent PINs</h3>
+                <button class="btn btn-secondary btn-sm" onclick="loadPins()">🔄 Refresh</button>
+            </div>
+            <table class="pins-table">
+                <thead>
+                    <tr>
+                        <th>PIN</th>
+                        <th>Label</th>
+                        <th>Status</th>
+                        <th>Valid From</th>
+                        <th>Valid Until</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="pinsBody">
+                    <tr><td colspan="6" class="empty">Select a device to view PINs</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <script>
+        let currentPin    = null;
+        let currentDevice = null;
+
+        async function loadDevices() {
+            const res     = await fetch('/api/devices');
+            const devices = await res.json();
+            const sel     = document.getElementById('deviceSelect');
+
+            if (devices.length === 0) {
+                sel.innerHTML = '<option value="">No devices found</option>';
+                return;
+            }
+
+            sel.innerHTML = '<option value="">Select device...</option>' +
+                devices.filter(d => d.activated)
+                       .map(d => `<option value="${d.id}" data-name="${d.name || d.serial}">${d.name || 'Unnamed'} — ${d.serial}</option>`)
+                       .join('');
+        }
+
+        async function loadPins() {
+            const deviceId = document.getElementById('deviceSelect').value;
+            const body     = document.getElementById('pinsBody');
+
+            if (!deviceId) {
+                body.innerHTML = '<tr><td colspan="6" class="empty">Select a device to view PINs</td></tr>';
+                return;
+            }
+
+            const res  = await fetch(`/api/temppins/${deviceId}`);
+            const pins = await res.json();
+
+            if (pins.length === 0) {
+                body.innerHTML = '<tr><td colspan="6" class="empty">No PINs yet</td></tr>';
+                return;
+            }
+
+            const now = new Date();
+            body.innerHTML = pins.map(p => {
+                const iat    = new Date(p.iat);
+                const exp    = new Date(p.exp);
+                let status, badgeClass;
+
+                if (!p.active) {
+                    status = 'EXPIRED'; badgeClass = 'badge-expired';
+                } else if (now < iat) {
+                    status = 'PENDING'; badgeClass = 'badge-pending';
+                } else if (now > exp) {
+                    status = 'EXPIRED'; badgeClass = 'badge-expired';
+                } else {
+                    status = 'ACTIVE'; badgeClass = 'badge-active';
+                }
+
+                return `<tr>
+                    <td class="pin-mono">${p.pin}</td>
+                    <td>${p.label || '—'}</td>
+                    <td><span class="badge ${badgeClass}">${status}</span></td>
+                    <td style="color:#8A9BB5">${iat.toLocaleString()}</td>
+                    <td style="color:#8A9BB5">${exp.toLocaleString()}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="deletePin(${p.id})">Delete</button></td>
+                </tr>`;
+            }).join('');
+        }
+
+        function setDefaultDates() {
+            const now   = new Date();
+            const later = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+            const fmt   = d => d.toISOString().slice(0, 16);
+            document.getElementById('iatInput').value = fmt(now);
+            document.getElementById('expInput').value = fmt(later);
+        }
+
+        function randomPin() {
+            document.getElementById('pinInput').value =
+                String(Math.floor(1000 + Math.random() * 9000));
+        }
+
+        async function generateTempPin() {
+            const deviceId = document.getElementById('deviceSelect').value;
+            const label    = document.getElementById('pinLabel').value.trim();
+            const pin      = document.getElementById('pinInput').value.trim();
+            const iat      = document.getElementById('iatInput').value;
+            const exp      = document.getElementById('expInput').value;
+
+            if (!deviceId) { alert('Please select a device'); return; }
+            if (!iat || !exp) { alert('Please set start and end date'); return; }
+            if (new Date(exp) <= new Date(iat)) { alert('End must be after start'); return; }
+            if (pin && (pin.length !== 4 || !/^\d{4}$/.test(pin))) {
+                alert('PIN must be exactly 4 digits'); return;
+            }
+
+            const res  = await fetch(`/api/temppins/${deviceId}`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ label, pin: pin || undefined, iat, exp })
+            });
+            const data = await res.json();
+            if (!res.ok) { alert('Error: ' + data.error); return; }
+
+            currentPin    = data.pin;
+            currentDevice = document.getElementById('deviceSelect').options[
+                document.getElementById('deviceSelect').selectedIndex
+            ].dataset.name;
+
+            const iatDate = new Date(iat);
+            const expDate = new Date(exp);
+            const validity = `${iatDate.toLocaleString()} → ${expDate.toLocaleString()}`;
+
+            document.getElementById('pinNumber').textContent  = currentPin;
+            document.getElementById('pinValidity').textContent = validity;
+            document.getElementById('pinResult').classList.add('show');
+            document.getElementById('pinResult').scrollIntoView({ behavior: 'smooth' });
+
+            loadPins();
+        }
+
+        async function deletePin(pinId) {
+            const deviceId = document.getElementById('deviceSelect').value;
+            if (!confirm('Delete this PIN? It will be removed from the device immediately.')) return;
+            const res = await fetch(`/api/temppins/${deviceId}/${pinId}`, { method: 'DELETE' });
+            if (res.ok) loadPins();
+        }
+
+        function shareWhatsApp() {
+            if (!currentPin) return;
+            const validity = document.getElementById('pinValidity').textContent;
+            const msg = encodeURIComponent(
+                `🔑 Temporary Access PIN\n\nDevice: ${currentDevice}\nPIN: ${currentPin}\nValid: ${validity}\n\n-- INNOVOLTX`
+            );
+            window.open(`https://wa.me/?text=${msg}`, '_blank');
+        }
+
+        function shareEmail() {
+            if (!currentPin) return;
+            const validity = document.getElementById('pinValidity').textContent;
+            const subject  = encodeURIComponent('Temporary Access PIN — ADC-100');
+            const body     = encodeURIComponent(
+                `Temporary Access PIN\n\nDevice: ${currentDevice}\nPIN: ${currentPin}\nValid: ${validity}\n\n-- INNOVOLTX`
+            );
+            window.open(`mailto:?subject=${subject}&body=${body}`);
+        }
+
+        async function copyPin() {
+            if (!currentPin) return;
+            await navigator.clipboard.writeText(currentPin);
+            alert('PIN copied to clipboard!');
+        }
+
+        loadDevices();
+        setDefaultDates();
+    </script>
+
+</body>
+</html>
