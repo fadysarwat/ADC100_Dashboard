@@ -857,7 +857,9 @@ body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
         }
 
         async function sendOpen() {
-            const result = await sendSecureCmd('open');
+            const relay_mode     = device.relay_mode     || 'timed';
+            const relay_duration = device.relay_duration || 5;
+            const result = await sendSecureCmd('open', { relay_mode, relay_duration });
             if (result.success) showFeedback('✅ Open command sent', 'success');
             else showFeedback('❌ Failed: ' + result.error, 'error');
         }
