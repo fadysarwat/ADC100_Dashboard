@@ -143,6 +143,32 @@ router.patch('/:id/notes', async (req, res) => {
     }
 });
 
+/* PATCH update relay settings */
+router.patch('/:id/relay', async (req, res) => {
+    const { relay_mode, relay_duration } = req.body;
+
+    if (!relay_mode || !['timed', 'latched'].includes(relay_mode))
+        return res.status(400).json({ error: 'relay_mode must be timed or latched' });
+
+    if (relay_mode === 'timed') {
+        const dur = parseInt(relay_duration);
+        if (isNaN(dur) || dur < 1 || dur > 300)
+            return res.status(400).json({ error: 'relay_duration must be 1–300 seconds' });
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE devices SET relay_mode = $1, relay_duration = $2 WHERE id = $3 RETURNING *',
+            [relay_mode, relay_mode === 'timed' ? parseInt(relay_duration) : null, req.params.id]
+        );
+        if (result.rows.length === 0)
+            return res.status(404).json({ error: 'Device not found' });
+        res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 /* DELETE device */
 router.delete('/:id', async (req, res) => {
     try {
@@ -233,13 +259,13 @@ router.post('/command', async (req, res) => {
 
     try {
         const devResult = await pool.query(
-            'SELECT id, mqtt_id FROM devices WHERE serial = $1',
+            'SELECT id, mqtt_id, relay_mode, relay_duration FROM devices WHERE serial = $1',
             [serial]
         );
         if (devResult.rows.length === 0)
             return res.status(404).json({ error: 'Device not found' });
 
-        const { id: deviceId, mqtt_id } = devResult.rows[0];
+        const { id: deviceId, mqtt_id, relay_mode, relay_duration } = devResult.rows[0];
         const mqttId  = mqtt_id || serial;
         const message = `${cmd}:${ts}`;
         const hmac    = crypto.createHmac('sha256', process.env.MQTT_SECRET)
@@ -247,6 +273,14 @@ router.post('/command', async (req, res) => {
                               .digest('hex');
 
         const payload = { cmd, ts, hmac };
+
+        if (cmd === 'open') {
+            /* Send relay mode and duration to firmware */
+            payload.relay_mode = relay_mode || 'timed';
+            if ((relay_mode || 'timed') === 'timed') {
+                payload.relay_duration = relay_duration || 5;
+            }
+        }
 
         if (cmd === 'set_schedule') {
             payload.enabled = enabled;

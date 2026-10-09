@@ -249,6 +249,53 @@
         .ble-row input:focus { outline: none; border-color: #00C2FF; }
         .ble-current { font-size: 12px; color: #8A9BB5; margin-bottom: 10px; }
         .ble-current span { color: #00C2FF; font-family: monospace; }
+
+        /* Relay Settings */
+        .relay-form { display: flex; flex-direction: column; gap: 12px; }
+        .relay-mode-row {
+            display: flex;
+            gap: 10px;
+        }
+        .relay-mode-btn {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #1e2d4a;
+            border-radius: 8px;
+            background: #0A0E1A;
+            color: #8A9BB5;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .relay-mode-btn.active {
+            border-color: #00C2FF;
+            background: #00C2FF18;
+            color: #00C2FF;
+        }
+        .relay-duration-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .relay-duration-row label { font-size: 13px; color: #8A9BB5; white-space: nowrap; }
+        .relay-duration-row input[type="number"] {
+            width: 80px;
+            padding: 8px;
+            background: #0A0E1A;
+            border: 1px solid #1e2d4a;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 14px;
+            text-align: center;
+        }
+        .relay-duration-row input[type="number"]:focus { outline: none; border-color: #00C2FF; }
+        .relay-duration-row span { font-size: 13px; color: #8A9BB5; }
+        .relay-saved { font-size: 12px; color: #00E5A0; display: none; }
+        .relay-saved.show { display: inline; }
+        #durationRow { transition: opacity 0.2s; }
+        #durationRow.hidden { opacity: 0.3; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -298,11 +345,11 @@
                     </div>
                     <div class="stat">
                         <div class="stat-label">Door</div>
-                        <div class="stat-value" id="hbDoor">—</div>
+                        <div class="stat-value red" id="hbDoor">CLOSED</div>
                     </div>
                     <div class="stat">
                         <div class="stat-label">Relay</div>
-                        <div class="stat-value" id="hbRelay">—</div>
+                        <div class="stat-value red" id="hbRelay">CLOSED</div>
                     </div>
                     <div class="stat">
                         <div class="stat-label">Tamper</div>
@@ -357,6 +404,32 @@
                 </div>
             </div>
 
+        </div>
+
+        <!-- Relay Settings -->
+        <div class="card" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <h3>Relay Settings</h3>
+                <span class="relay-saved" id="relaySaved">✅ Saved</span>
+            </div>
+            <div class="relay-form">
+                <div class="relay-mode-row">
+                    <div class="relay-mode-btn active" id="modeTimed" onclick="setRelayMode('timed')">
+                        ⏱ Timed
+                        <div style="font-size:11px; font-weight:normal; margin-top:4px; opacity:0.8;">Open for X seconds then close</div>
+                    </div>
+                    <div class="relay-mode-btn" id="modeLatched" onclick="setRelayMode('latched')">
+                        🔓 Hold Open
+                        <div style="font-size:11px; font-weight:normal; margin-top:4px; opacity:0.8;">Stay open until next command</div>
+                    </div>
+                </div>
+                <div class="relay-duration-row" id="durationRow">
+                    <label>Duration</label>
+                    <input type="number" id="relayDuration" value="5" min="1" max="300">
+                    <span>seconds</span>
+                </div>
+                <button class="btn btn-primary btn-sm" style="width:auto; align-self:flex-start;" onclick="saveRelaySettings()">💾 Save Relay Settings</button>
+            </div>
         </div>
 
         <!-- QR Door ID -->
@@ -469,6 +542,7 @@
         const deviceId = params.get('id');
         let   device   = null;
         let   ws       = null;
+        let   currentRelayMode = 'timed';
 
         if (!deviceId) window.location = '/';
 
@@ -511,11 +585,11 @@
 
             const doorEl = document.getElementById('hbDoor');
             doorEl.textContent = hb.door.toUpperCase();
-            doorEl.className   = 'stat-value ' + (hb.door === 'open' ? 'green' : '');
+            doorEl.className   = 'stat-value ' + (hb.door === 'open' ? 'green' : 'red');
 
             const relayEl = document.getElementById('hbRelay');
             relayEl.textContent = hb.relay.toUpperCase();
-            relayEl.className   = 'stat-value ' + (hb.relay === 'open' ? 'green' : '');
+            relayEl.className   = 'stat-value ' + (hb.relay === 'open' ? 'green' : 'red');
 
             const tamperEl = document.getElementById('hbTamper');
             tamperEl.textContent = hb.tamper.toUpperCase();
@@ -566,6 +640,12 @@
             document.getElementById('notesArea').value            = device.notes    || '';
             document.getElementById('bleCurrentName').textContent = device.ble_name || '—';
             updateStatus(device.status);
+
+            /* Load relay settings */
+            const mode = device.relay_mode || 'timed';
+            const dur  = device.relay_duration || 5;
+            setRelayMode(mode, false);
+            document.getElementById('relayDuration').value = dur;
         }
 
         async function loadHeartbeat() {
@@ -673,6 +753,42 @@ body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
                 const saved = document.getElementById('notesSaved');
                 saved.classList.add('show');
                 setTimeout(() => saved.classList.remove('show'), 2000);
+            }
+        }
+
+        /* ── Relay Settings ── */
+        function setRelayMode(mode, updateUI = true) {
+            currentRelayMode = mode;
+            if (updateUI) {
+                document.getElementById('modeTimed').classList.toggle('active', mode === 'timed');
+                document.getElementById('modeLatched').classList.toggle('active', mode === 'latched');
+                document.getElementById('durationRow').classList.toggle('hidden', mode === 'latched');
+            } else {
+                document.getElementById('modeTimed').classList.toggle('active', mode === 'timed');
+                document.getElementById('modeLatched').classList.toggle('active', mode === 'latched');
+                document.getElementById('durationRow').classList.toggle('hidden', mode === 'latched');
+            }
+        }
+
+        async function saveRelaySettings() {
+            const relay_mode     = currentRelayMode;
+            const relay_duration = parseInt(document.getElementById('relayDuration').value);
+
+            const res = await fetch(`/api/devices/${deviceId}/relay`, {
+                method:  'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ relay_mode, relay_duration })
+            });
+
+            if (res.ok) {
+                device.relay_mode     = relay_mode;
+                device.relay_duration = relay_duration;
+                const saved = document.getElementById('relaySaved');
+                saved.classList.add('show');
+                setTimeout(() => saved.classList.remove('show'), 2000);
+            } else {
+                const err = await res.json();
+                alert('Error: ' + err.error);
             }
         }
 
