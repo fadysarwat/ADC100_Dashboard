@@ -554,6 +554,7 @@
                 const el = document.getElementById('wsIndicator');
                 el.textContent = '⬤ Live';
                 el.className   = 'ws-indicator live';
+                loadHeartbeat(); // fetch immediately on connect
             };
 
             ws.onclose = () => {
@@ -587,9 +588,10 @@
             doorEl.textContent = hb.door.toUpperCase();
             doorEl.className   = 'stat-value ' + (hb.door === 'open' ? 'green' : 'red');
 
+            // Relay is normally-closed: relay "closed" = door held open (green), relay "open" = door closed (red)
             const relayEl = document.getElementById('hbRelay');
-            relayEl.textContent = hb.relay.toUpperCase();
-            relayEl.className   = 'stat-value ' + (hb.relay === 'open' ? 'green' : 'red');
+            relayEl.textContent = hb.relay === 'closed' ? 'OPEN' : 'CLOSED';
+            relayEl.className   = 'stat-value ' + (hb.relay === 'closed' ? 'green' : 'red');
 
             const tamperEl = document.getElementById('hbTamper');
             tamperEl.textContent = hb.tamper.toUpperCase();
@@ -857,9 +859,7 @@ body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
         }
 
         async function sendOpen() {
-            const relay_mode     = device.relay_mode     || 'timed';
-            const relay_duration = device.relay_duration || 5;
-            const result = await sendSecureCmd('open', { relay_mode, relay_duration });
+            const result = await sendSecureCmd('open');
             if (result.success) showFeedback('✅ Open command sent', 'success');
             else showFeedback('❌ Failed: ' + result.error, 'error');
         }
@@ -923,6 +923,7 @@ body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
             await loadCredentials();
             renderDoorQR();
             connectWS();
+            setInterval(loadHeartbeat, 10000); // refresh heartbeat every 10s as fallback
         }
 
         init();
