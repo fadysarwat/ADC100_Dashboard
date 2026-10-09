@@ -23,23 +23,23 @@ router.post('/login', async (req, res) => {
         if (userResult.rows.length === 0)
             return res.status(401).json({ error: 'Invalid credentials' });
 
-        const user  = userResult.rows[0];
+        const user = userResult.rows[0];
 
         /* 2. Verify password */
         const match = await bcrypt.compare(password, user.password);
         if (!match)
             return res.status(401).json({ error: 'Invalid credentials' });
 
-        /* 3. Get accessible doors + BLE secret for each */
+        /* 3. Get accessible doors */
         const doorsResult = await pool.query(
             `SELECT d.id, d.mqtt_id, d.name, d.location, d.ble_name
              FROM user_door_access uda
              JOIN devices d ON d.id = uda.device_id
-             WHERE uda.user_id = $1 AND d.activated = TRUE`,
+             WHERE uda.user_id = $1`,
             [user.id]
         );
 
-        /* 4. Build keys map: { door_id: ble_secret } */
+        /* 4. Build keys map: { mqtt_id: ble_secret } */
         const keys = {};
         doorsResult.rows.forEach(door => {
             const doorId = door.mqtt_id || String(door.id);
@@ -48,7 +48,7 @@ router.post('/login', async (req, res) => {
 
         const doors = doorsResult.rows.map(d => ({
             id:       d.id,
-            door_id:  d.mqtt_id,
+            mqtt_id:  d.mqtt_id,
             name:     d.name     || 'Unnamed',
             location: d.location || '—',
             ble_name: d.ble_name || `ADC100-${d.mqtt_id}`
@@ -61,7 +61,13 @@ router.post('/login', async (req, res) => {
             { expiresIn: JWT_EXPIRES }
         );
 
-        res.json({ token, user: { id: user.id, username: user.username, full_name: user.full_name }, doors, keys });
+        res.json({
+            token,
+            user: { id: user.id, username: user.username, full_name: user.full_name },
+            doors,
+            keys,
+            keys_updated_at: new Date().toISOString()   // ← timestamp
+        });
 
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -82,7 +88,7 @@ router.get('/keys', async (req, res) => {
             `SELECT d.id, d.mqtt_id, d.name, d.location, d.ble_name
              FROM user_door_access uda
              JOIN devices d ON d.id = uda.device_id
-             WHERE uda.user_id = $1 AND d.activated = TRUE`,
+             WHERE uda.user_id = $1`,
             [decoded.user_id]
         );
 
@@ -94,13 +100,18 @@ router.get('/keys', async (req, res) => {
 
         const doors = doorsResult.rows.map(d => ({
             id:       d.id,
-            door_id:  d.mqtt_id,
+            mqtt_id:  d.mqtt_id,
             name:     d.name     || 'Unnamed',
             location: d.location || '—',
             ble_name: d.ble_name || `ADC100-${d.mqtt_id}`
         }));
 
-        res.json({ doors, keys });
+        res.json({
+            doors,
+            keys,
+            keys_updated_at: new Date().toISOString()   // ← timestamp
+        });
+
     } catch (err) {
         res.status(401).json({ error: 'Invalid or expired token' });
     }
