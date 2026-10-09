@@ -295,7 +295,7 @@
         .relay-saved { font-size: 12px; color: #00E5A0; display: none; }
         .relay-saved.show { display: inline; }
         #durationRow { transition: opacity 0.2s; }
-        #durationRow.hidden { opacity: 0.3; pointer-events: none; }
+        #durationRow.hidden { display: none; }
     </style>
 </head>
 <body>
@@ -644,7 +644,7 @@
             /* Load relay settings */
             const mode = device.relay_mode || 'timed';
             const dur  = device.relay_duration || 5;
-            setRelayMode(mode, false);
+            setRelayMode(mode);
             document.getElementById('relayDuration').value = dur;
         }
 
@@ -757,17 +757,11 @@ body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
         }
 
         /* ── Relay Settings ── */
-        function setRelayMode(mode, updateUI = true) {
+        function setRelayMode(mode) {
             currentRelayMode = mode;
-            if (updateUI) {
-                document.getElementById('modeTimed').classList.toggle('active', mode === 'timed');
-                document.getElementById('modeLatched').classList.toggle('active', mode === 'latched');
-                document.getElementById('durationRow').classList.toggle('hidden', mode === 'latched');
-            } else {
-                document.getElementById('modeTimed').classList.toggle('active', mode === 'timed');
-                document.getElementById('modeLatched').classList.toggle('active', mode === 'latched');
-                document.getElementById('durationRow').classList.toggle('hidden', mode === 'latched');
-            }
+            document.getElementById('modeTimed').classList.toggle('active', mode === 'timed');
+            document.getElementById('modeLatched').classList.toggle('active', mode === 'latched');
+            document.getElementById('durationRow').classList.toggle('hidden', mode === 'latched');
         }
 
         async function saveRelaySettings() {
