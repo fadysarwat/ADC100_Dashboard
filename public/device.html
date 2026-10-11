@@ -725,9 +725,12 @@
         function printDoorQR() {
             const canvas = document.querySelector('#doorQRCode canvas');
             const label  = document.getElementById('doorQRLabel').textContent;
-            if (!canvas) return;
+            if (!canvas) { alert('QR not ready yet'); return; }
 
+            const dataUrl = canvas.toDataURL();
             const w = window.open('', '_blank');
+            if (!w) { alert('Please allow popups for this site'); return; }
+
             w.document.write(`<!DOCTYPE html>
 <html><head><title>Door QR — ${label}</title>
 <style>
@@ -736,10 +739,14 @@ body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
 .sub { font-size: 11px; color: #888; letter-spacing: 2px; margin-top: 4px; }
 </style></head>
 <body>
-<img src="${canvas.toDataURL()}" width="200" height="200">
+<img id="qrimg" src="${dataUrl}" width="200" height="200">
 <div class="lbl">${label}</div>
 <div class="sub">INNOVOLTX — ADC-100</div>
-<script>window.onload = function(){ window.print(); window.close(); }<\/script>
+<script>
+document.getElementById('qrimg').onload = function() {
+    setTimeout(function(){ window.print(); window.close(); }, 300);
+};
+<\/script>
 </body></html>`);
             w.document.close();
         }
@@ -874,8 +881,12 @@ body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
 
         async function sendGetStatus() {
             const result = await sendSecureCmd('get_status');
-            if (result.success) showFeedback('✅ Status request sent', 'success');
-            else showFeedback('❌ Failed: ' + result.error, 'error');
+            if (result.success) {
+                showFeedback('✅ Status request sent', 'success');
+                setTimeout(loadHeartbeat, 2000); // refresh after device responds
+            } else {
+                showFeedback('❌ Failed: ' + result.error, 'error');
+            }
         }
 
         async function sendResetWifi() {
