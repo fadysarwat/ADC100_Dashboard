@@ -38,15 +38,15 @@ router.post('/:deviceId', async (req, res) => {
             [req.params.deviceId, label, cred_type, cred_data, is_duress || false]
         );
 
-        /* Get device serial */
+        /* Get device mqtt_id */
         const devResult = await pool.query(
-            'SELECT serial FROM devices WHERE id = $1',
+            'SELECT mqtt_id FROM devices WHERE id = $1',
             [req.params.deviceId]
         );
         if (devResult.rows.length === 0)
             return res.status(404).json({ error: 'Device not found' });
 
-        const serial = devResult.rows[0].serial;
+        const mqttId = devResult.rows[0].mqtt_id;
         const ts     = Math.floor(Date.now() / 1000);
         const hmac   = generateHmac('add_credential', ts);
 
@@ -60,7 +60,7 @@ router.post('/:deviceId', async (req, res) => {
             label,
             duress:    is_duress ? 'true' : 'false'
         };
-        publish(`adc100/${serial}/cmd`, JSON.stringify(payload));
+        publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
 
         res.json(result.rows[0]);
     } catch (err) {
@@ -84,12 +84,12 @@ router.delete('/:deviceId/:credId', async (req, res) => {
         /* Delete from DB */
         await pool.query('DELETE FROM credentials WHERE id = $1', [req.params.credId]);
 
-        /* Get device serial */
+        /* Get device mqtt_id */
         const devResult = await pool.query(
-            'SELECT serial FROM devices WHERE id = $1',
+            'SELECT mqtt_id FROM devices WHERE id = $1',
             [req.params.deviceId]
         );
-        const serial = devResult.rows[0].serial;
+        const mqttId = devResult.rows[0].mqtt_id;
         const ts     = Math.floor(Date.now() / 1000);
         const hmac   = generateHmac('delete_credential', ts);
 
@@ -100,7 +100,7 @@ router.delete('/:deviceId/:credId', async (req, res) => {
             hmac,
             label: cred.label
         };
-        publish(`adc100/${serial}/cmd`, JSON.stringify(payload));
+        publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
 
         res.json({ success: true });
     } catch (err) {
