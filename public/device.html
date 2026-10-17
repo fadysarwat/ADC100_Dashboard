@@ -113,9 +113,10 @@
         }
         .stat-label { font-size: 11px; color: #8A9BB5; margin-bottom: 4px; }
         .stat-value { font-size: 18px; font-weight: bold; color: #fff; }
-        .stat-value.green { color: #00E5A0; }
-        .stat-value.red   { color: #FF4C4C; }
-        .stat-value.blue  { color: #00C2FF; }
+        .stat-value.green  { color: #00E5A0; }
+        .stat-value.red    { color: #FF4C4C; }
+        .stat-value.blue   { color: #00C2FF; }
+        .stat-value.orange { color: #FFA500; }
 
         .cmd-grid {
             display: grid;
@@ -344,6 +345,10 @@
                         <div class="stat-value" id="hbHeap">—</div>
                     </div>
                     <div class="stat">
+                        <div class="stat-label">Firmware</div>
+                        <div class="stat-value blue" id="hbFw">—</div>
+                    </div>
+                    <div class="stat">
                         <div class="stat-label">Door</div>
                         <div class="stat-value red" id="hbDoor">CLOSED</div>
                     </div>
@@ -358,6 +363,22 @@
                     <div class="stat">
                         <div class="stat-label">Fire</div>
                         <div class="stat-value" id="hbFire">—</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Restart Reason</div>
+                        <div class="stat-value" id="hbRestart">—</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Credentials</div>
+                        <div class="stat-value blue" id="hbCreds">—</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">Schedule</div>
+                        <div class="stat-value" id="hbSchedule">—</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">MQTT Reconnects</div>
+                        <div class="stat-value" id="hbMqttRecon">—</div>
                     </div>
                 </div>
             </div>
@@ -584,6 +605,7 @@
             document.getElementById('hbRssi').textContent   = `${hb.rssi} dBm`;
             document.getElementById('hbIp').textContent     = hb.ip;
             document.getElementById('hbHeap').textContent   = `${Math.round(hb.free_heap / 1024)} KB`;
+            document.getElementById('hbFw').textContent     = hb.fw ? `v${hb.fw}` : '—';
 
             const doorEl = document.getElementById('hbDoor');
             doorEl.textContent = hb.door.toUpperCase();
@@ -601,6 +623,31 @@
             const fireEl = document.getElementById('hbFire');
             fireEl.textContent = hb.fire.toUpperCase();
             fireEl.className   = 'stat-value ' + (hb.fire === 'active' ? 'red' : 'green');
+
+            // Restart reason
+            const restartEl = document.getElementById('hbRestart');
+            restartEl.textContent = (hb.restart_reason || '—').replace(/_/g, ' ').toUpperCase();
+            restartEl.className   = 'stat-value ' + (hb.restart_reason === 'power_on' ? 'green' : 'orange');
+
+            // Credentials count
+            const credsEl = document.getElementById('hbCreds');
+            credsEl.textContent = hb.credentials !== undefined ? hb.credentials : '—';
+            credsEl.className   = 'stat-value blue';
+
+            // Schedule
+            const schedEl = document.getElementById('hbSchedule');
+            if (hb.schedule_enabled) {
+                schedEl.textContent = `ON  ${hb.schedule_start || ''}–${hb.schedule_end || ''}`;
+                schedEl.className   = 'stat-value green';
+            } else {
+                schedEl.textContent = 'OFF';
+                schedEl.className   = 'stat-value red';
+            }
+
+            // MQTT reconnects
+            const mqttEl = document.getElementById('hbMqttRecon');
+            mqttEl.textContent = hb.mqtt_reconnects !== undefined ? hb.mqtt_reconnects : '—';
+            mqttEl.className   = 'stat-value ' + (hb.mqtt_reconnects > 1 ? 'orange' : 'green');
         }
 
         /* ── Status update ── */
