@@ -60,11 +60,19 @@ function startMqtt(broadcastFn) {
                 );
 
                 const hbResult = await pool.query(
-                    `INSERT INTO heartbeats (device_id, fw, uptime, rssi, ip, free_heap, door, relay, tamper, fire)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+                    `INSERT INTO heartbeats
+                        (device_id, fw, uptime, rssi, ip, free_heap, door, relay, tamper, fire,
+                         restart_reason, credentials, schedule_enabled, schedule_start, schedule_end, mqtt_reconnects)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
                     [device.id, payload.fw, payload.uptime, payload.rssi,
                      payload.ip, payload.free_heap, payload.door,
-                     payload.relay, payload.tamper, payload.fire]
+                     payload.relay, payload.tamper, payload.fire,
+                     payload.restart_reason   ?? null,
+                     payload.credentials      ?? null,
+                     payload.schedule_enabled ?? null,
+                     payload.schedule_start   ?? null,
+                     payload.schedule_end     ?? null,
+                     payload.mqtt_reconnects  ?? null]
                 );
 
                 console.log(`Heartbeat from ${mqttId} — uptime: ${payload.uptime}s — row id: ${hbResult.rows[0].id}`);
