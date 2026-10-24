@@ -423,6 +423,18 @@
                     </div>
                     <button class="btn btn-primary" onclick="sendSchedule()">💾 Save Schedule</button>
                 </div>
+
+                <hr class="divider">
+
+                <h3 style="margin-bottom:12px;">Touch Input</h3>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span style="font-size:13px; color:#8A9BB5;">Status:</span>
+                    <span id="touchStatus" style="font-size:13px; font-weight:bold; color:#8A9BB5;">—</span>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <button class="btn btn-primary btn-sm" style="width:auto;" onclick="sendSetTouch(true)">👆 Enable Touch</button>
+                    <button class="btn btn-danger btn-sm"  style="width:auto;" onclick="sendSetTouch(false)">🚫 Disable Touch</button>
+                </div>
             </div>
 
         </div>
@@ -953,6 +965,20 @@ document.getElementById('qrimg').onload = function() {
                 document.getElementById('bleCurrentName').textContent = name;
                 document.getElementById('bleNameInput').value = '';
                 showFeedback('✅ BLE name updated', 'success');
+            } else {
+                showFeedback('❌ Failed: ' + result.error, 'error');
+            }
+        }
+
+        async function sendSetTouch(enabled) {
+            const result = await sendSecureCmd('set_touch', { enabled: enabled.toString() });
+            if (result.success) {
+                const label = enabled ? 'ENABLED' : 'DISABLED';
+                const color = enabled ? '#00E5A0' : '#FF4C4C';
+                const el = document.getElementById('touchStatus');
+                el.textContent = label;
+                el.style.color  = color;
+                showFeedback(`✅ Touch ${label.toLowerCase()}`, 'success');
             } else {
                 showFeedback('❌ Failed: ' + result.error, 'error');
             }
