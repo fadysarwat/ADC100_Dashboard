@@ -275,7 +275,6 @@ router.post('/command', async (req, res) => {
         const payload = { cmd, ts, hmac };
 
         if (cmd === 'open') {
-            /* Send relay mode and duration to firmware */
             payload.relay_mode = relay_mode || 'timed';
             if ((relay_mode || 'timed') === 'timed') {
                 payload.relay_duration = relay_duration || 5;
@@ -288,13 +287,18 @@ router.post('/command', async (req, res) => {
             payload.end     = end;
         }
 
+        if (cmd === 'set_touch') {
+            if (enabled === undefined || enabled === null)
+                return res.status(400).json({ error: 'enabled required for set_touch' });
+            payload.enabled = enabled;
+        }
+
         if (cmd === 'set_ble_name') {
             if (!name) return res.status(400).json({ error: 'name required for set_ble_name' });
             if (!name.startsWith('ADC100-'))
                 return res.status(400).json({ error: 'BLE name must start with ADC100-' });
             payload.name = name;
 
-            /* Save to DB */
             await pool.query(
                 'UPDATE devices SET ble_name = $1 WHERE id = $2',
                 [name, deviceId]
