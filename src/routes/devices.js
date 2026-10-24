@@ -293,6 +293,12 @@ router.post('/command', async (req, res) => {
             payload.enabled = enabled;
         }
 
+        if (cmd === 'ota_update') {
+            const { url } = req.body;
+            if (!url) return res.status(400).json({ error: 'url required for ota_update' });
+            payload.url = url;
+        }
+
         if (cmd === 'set_ble_name') {
             if (!name) return res.status(400).json({ error: 'name required for set_ble_name' });
             if (!name.startsWith('ADC100-'))
