@@ -1092,7 +1092,7 @@ document.getElementById('qrimg').onload = function() {
             document.getElementById('wifiStep3').style.display = 'none';
             document.getElementById('wifiFeedback').className  = 'cmd-feedback';
 
-            const result = await sendSecureCmd('set_wifi', { ssid, password });
+            const result = await sendSecureCmd('set_wifi', { ssid, pass: password });
             if (!result.success) {
                 resetWifiFlow();
                 showWifiFeedback('❌ Failed to send: ' + result.error, 'error');
