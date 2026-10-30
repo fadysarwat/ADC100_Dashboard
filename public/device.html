@@ -481,6 +481,61 @@
             <div id="otaFeedback" class="cmd-feedback" style="margin-top:10px;"></div>
         </div>
 
+        <!-- Remote WiFi Reconfiguration -->
+        <div class="card" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <h3>Remote WiFi Reconfiguration</h3>
+                <span style="font-size:11px; color:#FF9500; font-weight:bold;">⚠️ Device will reconnect</span>
+            </div>
+            <div style="font-size:12px; color:#8A9BB5; margin-bottom:16px;">
+                Send new WiFi credentials to the device. The device will store them and wait for confirmation before switching networks.
+            </div>
+
+            <!-- Step 1: Enter credentials -->
+            <div id="wifiStep1">
+                <div style="display:flex; flex-direction:column; gap:10px; max-width:420px;">
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:12px; color:#8A9BB5;">New SSID (Network Name)</label>
+                        <input type="text" id="wifiSsid" placeholder="e.g. MyOffice_5G" style="background:#0A0E1A; border:1px solid #1e2d4a; color:#fff; padding:8px 12px; border-radius:6px; font-size:13px; outline:none;">
+                    </div>
+                    <div style="display:flex; flex-direction:column; gap:4px;">
+                        <label style="font-size:12px; color:#8A9BB5;">New Password</label>
+                        <input type="password" id="wifiPassword" placeholder="WiFi password" style="background:#0A0E1A; border:1px solid #1e2d4a; color:#fff; padding:8px 12px; border-radius:6px; font-size:13px; outline:none;">
+                    </div>
+                    <button class="btn btn-primary btn-sm" style="width:auto; align-self:flex-start;" onclick="sendSetWifi()">📡 Send Credentials</button>
+                </div>
+            </div>
+
+            <!-- Step 2: Waiting for ACK -->
+            <div id="wifiStep2" style="display:none;">
+                <div style="display:flex; align-items:center; gap:12px; padding:14px; background:#00C2FF10; border:1px solid #00C2FF40; border-radius:8px; margin-bottom:14px;">
+                    <span style="font-size:20px;">⏳</span>
+                    <div>
+                        <div style="font-size:13px; font-weight:bold; color:#00C2FF;">Waiting for device acknowledgment...</div>
+                        <div style="font-size:12px; color:#8A9BB5; margin-top:2px;">Device received the credentials — waiting for PENDING confirmation.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 3: PENDING received — show Apply button -->
+            <div id="wifiStep3" style="display:none;">
+                <div style="display:flex; align-items:center; gap:12px; padding:14px; background:#00E5A010; border:1px solid #00E5A040; border-radius:8px; margin-bottom:14px;">
+                    <span style="font-size:20px;">✅</span>
+                    <div>
+                        <div style="font-size:13px; font-weight:bold; color:#00E5A0;">Credentials stored on device!</div>
+                        <div style="font-size:12px; color:#8A9BB5; margin-top:2px;">Press Apply to restart the device with the new WiFi credentials.</div>
+                    </div>
+                </div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <button class="btn btn-primary btn-sm" style="width:auto;" onclick="sendApplyWifi()">🔄 Apply & Restart</button>
+                    <button class="btn btn-secondary btn-sm" style="width:auto;" onclick="resetWifiFlow()">✖ Cancel</button>
+                </div>
+            </div>
+
+            <!-- Step 4: Done / Error -->
+            <div id="wifiFeedback" class="cmd-feedback" style="margin-top:10px;"></div>
+        </div>
+
         <!-- QR Door ID -->
         <div class="card" style="margin-bottom: 24px;">
             <div class="card-header">
@@ -621,6 +676,7 @@
                 if (msg.type === 'heartbeat') updateHealth(msg.data);
                 if (msg.type === 'event')     prependLog(msg.data);
                 if (msg.type === 'status')    updateStatus(msg.data.status);
+                if (msg.type === 'wifi')      handleWifiEvent(msg.data);
             };
         }
 
@@ -1020,6 +1076,77 @@ document.getElementById('qrimg').onload = function() {
                 showFeedback(`✅ Touch ${label.toLowerCase()}`, 'success');
             } else {
                 showFeedback('❌ Failed: ' + result.error, 'error');
+            }
+        }
+
+        /* ── Remote WiFi Reconfiguration ── */
+        async function sendSetWifi() {
+            const ssid     = document.getElementById('wifiSsid').value.trim();
+            const password = document.getElementById('wifiPassword').value.trim();
+            if (!ssid)     { showWifiFeedback('❌ Enter the new SSID', 'error'); return; }
+            if (!password) { showWifiFeedback('❌ Enter the WiFi password', 'error'); return; }
+
+            /* Show step 2 — waiting for ACK */
+            document.getElementById('wifiStep1').style.display = 'none';
+            document.getElementById('wifiStep2').style.display = 'block';
+            document.getElementById('wifiStep3').style.display = 'none';
+            document.getElementById('wifiFeedback').className  = 'cmd-feedback';
+
+            const result = await sendSecureCmd('set_wifi', { ssid, password });
+            if (!result.success) {
+                resetWifiFlow();
+                showWifiFeedback('❌ Failed to send: ' + result.error, 'error');
+            }
+            /* Waiting for 'wifi' WS event with result: 'PENDING' */
+        }
+
+        async function sendApplyWifi() {
+            const result = await sendSecureCmd('apply_wifi');
+            if (result.success) {
+                document.getElementById('wifiStep3').style.display = 'none';
+                showWifiFeedback('✅ Apply command sent — device is restarting with new WiFi...', 'success');
+                /* Reset form after 6s so user can reconfigure if needed */
+                setTimeout(resetWifiFlow, 6000);
+            } else {
+                showWifiFeedback('❌ Failed: ' + result.error, 'error');
+            }
+        }
+
+        function resetWifiFlow() {
+            document.getElementById('wifiStep1').style.display = 'block';
+            document.getElementById('wifiStep2').style.display = 'none';
+            document.getElementById('wifiStep3').style.display = 'none';
+            document.getElementById('wifiSsid').value     = '';
+            document.getElementById('wifiPassword').value = '';
+        }
+
+        function showWifiFeedback(msg, type) {
+            const el = document.getElementById('wifiFeedback');
+            el.textContent = msg;
+            el.className   = 'cmd-feedback ' + type;
+            if (type === 'success') setTimeout(() => { el.className = 'cmd-feedback'; }, 6000);
+        }
+
+        function handleWifiEvent(data) {
+            /* data = { event: 'wifi', cmd: 'set_wifi'|'apply_wifi', result: 'PENDING'|'OK'|'FAILED' } */
+            if (data.cmd === 'set_wifi') {
+                if (data.result === 'PENDING') {
+                    /* Device stored credentials — show Apply button */
+                    document.getElementById('wifiStep2').style.display = 'none';
+                    document.getElementById('wifiStep3').style.display = 'block';
+                } else {
+                    /* Unexpected result from set_wifi */
+                    resetWifiFlow();
+                    showWifiFeedback('❌ Device returned: ' + data.result, 'error');
+                }
+            }
+            if (data.cmd === 'apply_wifi') {
+                if (data.result === 'OK') {
+                    showWifiFeedback('✅ WiFi updated — device reconnected!', 'success');
+                } else {
+                    showWifiFeedback('❌ WiFi apply failed: ' + data.result, 'error');
+                }
+                setTimeout(resetWifiFlow, 4000);
             }
         }
 

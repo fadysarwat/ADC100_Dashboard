@@ -299,6 +299,18 @@ router.post('/command', async (req, res) => {
             payload.url = url;
         }
 
+        if (cmd === 'set_wifi') {
+            const { ssid, password } = req.body;
+            if (!ssid || !password)
+                return res.status(400).json({ error: 'ssid and password required for set_wifi' });
+            payload.ssid     = ssid;
+            payload.password = password;
+        }
+
+        if (cmd === 'apply_wifi') {
+            /* No extra fields needed — device applies the pending credentials it already stored */
+        }
+
         if (cmd === 'set_ble_name') {
             if (!name) return res.status(400).json({ error: 'name required for set_ble_name' });
             if (!name.startsWith('ADC100-'))

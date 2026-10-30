@@ -112,28 +112,44 @@ function startMqtt(broadcastFn) {
                 }
             }
 
-                    if (type === 'event') {
-            let method = payload.method;
+            if (type === 'event') {
 
-            /* Check if PIN is a temp PIN */
-            if (method === 'PIN' && payload.result === 'GRANTED') {
-                const tempCheck = await pool.query(
-                    `SELECT id FROM temp_pins
-                    WHERE device_id = $1
-                    AND active = TRUE
-                    AND NOW() BETWEEN iat AND exp`,
-                    [device.id]
-                );
-                if (tempCheck.rows.length > 0) {
-                    method = 'TEMP_PIN';
+                /* WiFi events — broadcast only, no DB insert */
+                if (payload.event === 'wifi') {
+                    console.log(`WiFi event from ${mqttId} — cmd: ${payload.cmd}, result: ${payload.result}`);
+                    if (broadcast) {
+                        broadcast({
+                            type:     'wifi',
+                            serial:   mqttId,
+                            deviceId: device.id,
+                            data:     payload
+                        });
+                    }
+                    return;
                 }
-            }
 
-            const evResult = await pool.query(
-                `INSERT INTO access_logs (device_id, method, result)
-                VALUES ($1, $2, $3) RETURNING *`,
-                [device.id, method, payload.result]
-            );
+                /* Access events — save to DB and broadcast */
+                let method = payload.method;
+
+                /* Check if PIN is a temp PIN */
+                if (method === 'PIN' && payload.result === 'GRANTED') {
+                    const tempCheck = await pool.query(
+                        `SELECT id FROM temp_pins
+                        WHERE device_id = $1
+                        AND active = TRUE
+                        AND NOW() BETWEEN iat AND exp`,
+                        [device.id]
+                    );
+                    if (tempCheck.rows.length > 0) {
+                        method = 'TEMP_PIN';
+                    }
+                }
+
+                const evResult = await pool.query(
+                    `INSERT INTO access_logs (device_id, method, result)
+                    VALUES ($1, $2, $3) RETURNING *`,
+                    [device.id, method, payload.result]
+                );
 
                 console.log(`Access event from ${mqttId} — ${payload.method}: ${payload.result}`);
 
