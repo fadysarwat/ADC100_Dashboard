@@ -297,6 +297,17 @@
         .relay-saved.show { display: inline; }
         #durationRow { transition: opacity 0.2s; }
         #durationRow.hidden { display: none; }
+
+        .user-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: bold;
+            background: #00C2FF18;
+            color: #00C2FF;
+            border: 1px solid #00C2FF40;
+        }
     </style>
 </head>
 <body>
@@ -335,6 +346,10 @@
                     <div class="stat">
                         <div class="stat-label">RSSI</div>
                         <div class="stat-value" id="hbRssi">—</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-label">WiFi Network</div>
+                        <div class="stat-value blue" id="hbSsid">—</div>
                     </div>
                     <div class="stat">
                         <div class="stat-label">IP Address</div>
@@ -631,10 +646,11 @@
                         <th>Time</th>
                         <th>Method</th>
                         <th>Result</th>
+                        <th>User</th>
                     </tr>
                 </thead>
                 <tbody id="logsBody">
-                    <tr><td colspan="3" class="empty-logs">Loading...</td></tr>
+                    <tr><td colspan="4" class="empty-logs">Loading...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -659,7 +675,7 @@
                 const el = document.getElementById('wsIndicator');
                 el.textContent = '⬤ Live';
                 el.className   = 'ws-indicator live';
-                loadHeartbeat(); // fetch immediately on connect
+                loadHeartbeat();
             };
 
             ws.onclose = () => {
@@ -687,6 +703,7 @@
             const s = hb.uptime % 60;
             document.getElementById('hbUptime').textContent = `${h}h ${m}m ${s}s`;
             document.getElementById('hbRssi').textContent   = `${hb.rssi} dBm`;
+            document.getElementById('hbSsid').textContent   = hb.ssid || '—';
             document.getElementById('hbIp').textContent     = hb.ip;
             document.getElementById('hbHeap').textContent   = `${Math.round(hb.free_heap / 1024)} KB`;
             document.getElementById('hbFw').textContent     = hb.fw ? `v${hb.fw}` : '—';
@@ -695,7 +712,6 @@
             doorEl.textContent = hb.door.toUpperCase();
             doorEl.className   = 'stat-value ' + (hb.door === 'open' ? 'green' : 'red');
 
-            // Relay is normally-closed: relay "closed" = door held open (green), relay "open" = door closed (red)
             const relayEl = document.getElementById('hbRelay');
             relayEl.textContent = hb.relay === 'closed' ? 'OPEN' : 'CLOSED';
             relayEl.className   = 'stat-value ' + (hb.relay === 'closed' ? 'green' : 'red');
@@ -708,17 +724,14 @@
             fireEl.textContent = hb.fire.toUpperCase();
             fireEl.className   = 'stat-value ' + (hb.fire === 'active' ? 'red' : 'green');
 
-            // Restart reason
             const restartEl = document.getElementById('hbRestart');
             restartEl.textContent = (hb.restart_reason || '—').replace(/_/g, ' ').toUpperCase();
             restartEl.className   = 'stat-value ' + (hb.restart_reason === 'power_on' ? 'green' : 'orange');
 
-            // Credentials count
             const credsEl = document.getElementById('hbCreds');
             credsEl.textContent = hb.credentials !== undefined ? hb.credentials : '—';
             credsEl.className   = 'stat-value blue';
 
-            // Schedule
             const schedEl = document.getElementById('hbSchedule');
             if (hb.schedule_enabled) {
                 schedEl.textContent = `ON  ${hb.schedule_start || ''}–${hb.schedule_end || ''}`;
@@ -728,7 +741,6 @@
                 schedEl.className   = 'stat-value red';
             }
 
-            // MQTT reconnects
             const mqttEl = document.getElementById('hbMqttRecon');
             mqttEl.textContent = hb.mqtt_reconnects !== undefined ? hb.mqtt_reconnects : '—';
             mqttEl.className   = 'stat-value ' + (hb.mqtt_reconnects > 1 ? 'orange' : 'green');
@@ -752,12 +764,16 @@
                               : 'result-denied';
             const methodClass = (log.method === 'TEMP_PIN' || log.method === 'TEMP_QR')
                               ? 'result-temp' : '';
-            const time = new Date(log.created_at).toLocaleString();
-            const row  = document.createElement('tr');
+            const time     = new Date(log.created_at).toLocaleString();
+            const userCell = log.user_name
+                           ? `<span class="user-badge">👤 ${log.user_name}</span>`
+                           : '<span style="color:#8A9BB5; font-size:12px;">—</span>';
+            const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${time}</td>
                 <td class="${methodClass}">${log.method}</td>
-                <td class="${resultClass}">${log.result}</td>`;
+                <td class="${resultClass}">${log.result}</td>
+                <td>${userCell}</td>`;
             body.insertBefore(row, body.firstChild);
         }
 
@@ -775,7 +791,6 @@
             document.getElementById('bleCurrentName').textContent = device.ble_name || '—';
             updateStatus(device.status);
 
-            /* Load relay settings */
             const mode = device.relay_mode || 'timed';
             const dur  = device.relay_duration || 5;
             setRelayMode(mode);
@@ -805,7 +820,7 @@
             const body = document.getElementById('logsBody');
 
             if (logs.length === 0) {
-                body.innerHTML = '<tr><td colspan="3" class="empty-logs">No access events found</td></tr>';
+                body.innerHTML = '<tr><td colspan="4" class="empty-logs">No access events found</td></tr>';
                 return;
             }
 
@@ -815,11 +830,15 @@
                                   : 'result-denied';
                 const methodClass = (log.method === 'TEMP_PIN' || log.method === 'TEMP_QR')
                                   ? 'result-temp' : '';
-                const time = new Date(log.created_at).toLocaleString();
+                const time     = new Date(log.created_at).toLocaleString();
+                const userCell = log.user_name
+                               ? `<span class="user-badge">👤 ${log.user_name}</span>`
+                               : '<span style="color:#8A9BB5; font-size:12px;">—</span>';
                 return `<tr>
                     <td>${time}</td>
                     <td class="${methodClass}">${log.method}</td>
                     <td class="${resultClass}">${log.result}</td>
+                    <td>${userCell}</td>
                 </tr>`;
             }).join('');
         }
@@ -1014,7 +1033,7 @@ document.getElementById('qrimg').onload = function() {
             const result = await sendSecureCmd('get_status');
             if (result.success) {
                 showFeedback('✅ Status request sent', 'success');
-                setTimeout(loadHeartbeat, 2000); // refresh after device responds
+                setTimeout(loadHeartbeat, 2000);
             } else {
                 showFeedback('❌ Failed: ' + result.error, 'error');
             }
@@ -1086,7 +1105,6 @@ document.getElementById('qrimg').onload = function() {
             if (!ssid)     { showWifiFeedback('❌ Enter the new SSID', 'error'); return; }
             if (!password) { showWifiFeedback('❌ Enter the WiFi password', 'error'); return; }
 
-            /* Show step 2 — waiting for ACK */
             document.getElementById('wifiStep1').style.display = 'none';
             document.getElementById('wifiStep2').style.display = 'block';
             document.getElementById('wifiStep3').style.display = 'none';
@@ -1097,7 +1115,6 @@ document.getElementById('qrimg').onload = function() {
                 resetWifiFlow();
                 showWifiFeedback('❌ Failed to send: ' + result.error, 'error');
             }
-            /* Waiting for 'wifi' WS event with result: 'PENDING' */
         }
 
         async function sendApplyWifi() {
@@ -1105,7 +1122,6 @@ document.getElementById('qrimg').onload = function() {
             if (result.success) {
                 document.getElementById('wifiStep3').style.display = 'none';
                 showWifiFeedback('✅ Apply command sent — device is restarting with new WiFi...', 'success');
-                /* Reset form after 6s so user can reconfigure if needed */
                 setTimeout(resetWifiFlow, 6000);
             } else {
                 showWifiFeedback('❌ Failed: ' + result.error, 'error');
@@ -1128,26 +1144,23 @@ document.getElementById('qrimg').onload = function() {
         }
 
         function handleWifiEvent(data) {
-            /* data = { event: 'wifi', cmd: 'set_wifi'|'apply_wifi', result: 'PENDING'|'OK'|'FAILED' } */
             if (data.cmd === 'set_wifi') {
                 if (data.result === 'PENDING') {
-                    /* Device stored credentials — show Apply button */
                     document.getElementById('wifiStep2').style.display = 'none';
                     document.getElementById('wifiStep3').style.display = 'block';
                 } else {
-                    /* Unexpected result from set_wifi */
                     resetWifiFlow();
                     showWifiFeedback('❌ Device returned: ' + data.result, 'error');
                 }
             }
-        if (data.cmd === 'apply_wifi') {
-            if (data.result === 'OK' || data.result === 'APPLYING') {
-                showWifiFeedback('✅ Apply command sent — device is restarting with new WiFi...', 'success');
-            } else {
-                showWifiFeedback('❌ WiFi apply failed: ' + data.result, 'error');
+            if (data.cmd === 'apply_wifi') {
+                if (data.result === 'OK' || data.result === 'APPLYING') {
+                    showWifiFeedback('✅ Apply command sent — device is restarting with new WiFi...', 'success');
+                } else {
+                    showWifiFeedback('❌ WiFi apply failed: ' + data.result, 'error');
+                }
+                setTimeout(resetWifiFlow, 4000);
             }
-            setTimeout(resetWifiFlow, 4000);
-        }
         }
 
         async function sendSchedule() {
@@ -1174,7 +1187,7 @@ document.getElementById('qrimg').onload = function() {
             await loadCredentials();
             renderDoorQR();
             connectWS();
-            setInterval(loadHeartbeat, 10000); // refresh heartbeat every 10s as fallback
+            setInterval(loadHeartbeat, 10000);
         }
 
         init();
