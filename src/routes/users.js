@@ -1,6 +1,9 @@
 const express = require('express');
 const router  = express.Router();
 const pool    = require('../db/pool');
+const { publish } = require('../mqtt');
+const crypto  = require('crypto');
+require('dotenv').config();
 
 /* GET all door users */
 router.get('/', async (req, res) => {
@@ -60,7 +63,7 @@ router.delete('/:id', async (req, res) => {
 router.get('/:id/credentials', async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT uc.*, d.name AS device_name, d.serial
+            `SELECT uc.*, d.name AS device_name, d.serial, d.mqtt_id
              FROM user_credentials uc
              JOIN devices d ON d.id = uc.device_id
              WHERE uc.user_id = $1
@@ -73,7 +76,7 @@ router.get('/:id/credentials', async (req, res) => {
     }
 });
 
-/* POST add credential to user */
+/* POST add credential to user + send MQTT to device */
 router.post('/:id/credentials', async (req, res) => {
     const { device_id, type, identifier } = req.body;
     if (!device_id || !type || !identifier)
@@ -82,15 +85,54 @@ router.post('/:id/credentials', async (req, res) => {
         return res.status(400).json({ error: 'type must be rfid, pin, or qr' });
 
     try {
+        /* Get user name */
+        const userResult = await pool.query(
+            'SELECT name FROM door_users WHERE id = $1',
+            [req.params.id]
+        );
+        if (userResult.rows.length === 0)
+            return res.status(404).json({ error: 'User not found' });
+        const userName = userResult.rows[0].name;
+
+        /* Get device mqtt_id */
+        const devResult = await pool.query(
+            'SELECT mqtt_id, serial FROM devices WHERE id = $1',
+            [device_id]
+        );
+        if (devResult.rows.length === 0)
+            return res.status(404).json({ error: 'Device not found' });
+        const mqttId = devResult.rows[0].mqtt_id || devResult.rows[0].serial;
+
+        /* Save to DB */
         const result = await pool.query(
             `INSERT INTO user_credentials (user_id, device_id, type, identifier)
              VALUES ($1, $2, $3, $4) RETURNING *`,
             [req.params.id, device_id, type, identifier.trim()]
         );
+
+        /* Send MQTT command to device */
+        const ts      = Math.floor(Date.now() / 1000);
+        const message = `add_credential:${ts}`;
+        const hmac    = crypto.createHmac('sha256', process.env.MQTT_SECRET)
+                              .update(message)
+                              .digest('hex');
+
+        const payload = {
+            cmd:       'add_credential',
+            ts,
+            hmac,
+            cred_type: type,
+            cred_data: identifier.trim(),
+            label:     userName,
+            duress:    'false'
+        };
+
+        publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
+
         res.json(result.rows[0]);
     } catch (err) {
         if (err.code === '23505')
-            return res.status(409).json({ error: 'This credential is already assigned on this device' });
+            return res.status(409).json({ error: 'This credential is already assigned on this device', code: '23505' });
         res.status(500).json({ error: err.message });
     }
 });
