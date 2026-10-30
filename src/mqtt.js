@@ -128,6 +128,12 @@ function startMqtt(broadcastFn) {
                     return;
                 }
 
+                /* Credential events (add/delete ACK) — ignore, no DB insert */
+                if (payload.event === 'credential') {
+                    console.log(`Credential event from ${mqttId} — cmd: ${payload.cmd}, label: ${payload.label}, result: ${payload.result}`);
+                    return;
+                }
+
                 /* Access events — save to DB and broadcast */
                 let method = payload.method;
 
