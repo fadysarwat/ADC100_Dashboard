@@ -304,7 +304,7 @@ router.post('/command', async (req, res) => {
             if (!ssid || !pass)
                 return res.status(400).json({ error: 'ssid and password required for set_wifi' });
             payload.ssid     = ssid;
-            payload.password = pass;
+            payload.pass = pass;
         }
 
         if (cmd === 'apply_wifi') {
