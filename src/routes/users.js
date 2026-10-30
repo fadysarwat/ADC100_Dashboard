@@ -103,11 +103,11 @@ router.post('/:id/credentials', async (req, res) => {
             return res.status(404).json({ error: 'Device not found' });
         const mqttId = devResult.rows[0].mqtt_id || devResult.rows[0].serial;
 
-        /* Save to DB */
+        /* Save to DB — identifier = user name (matches what firmware sends) */
         const result = await pool.query(
             `INSERT INTO user_credentials (user_id, device_id, type, identifier)
              VALUES ($1, $2, $3, $4) RETURNING *`,
-            [req.params.id, device_id, type, identifier.trim()]
+            [req.params.id, device_id, type, userName]
         );
 
         /* Send MQTT command to device */
@@ -122,8 +122,8 @@ router.post('/:id/credentials', async (req, res) => {
             ts,
             hmac,
             cred_type: type,
-            cred_data: identifier.trim(),
-            label:     userName,
+            cred_data: identifier.trim(),  /* actual PIN/UID/QR value for the device */
+            label:     userName,           /* name shown in logs */
             duress:    'false'
         };
 
