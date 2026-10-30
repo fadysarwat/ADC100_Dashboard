@@ -176,12 +176,21 @@ function startMqtt(broadcastFn) {
 
                 console.log(`Access event from ${mqttId} — ${payload.method}: ${payload.result}`);
 
+                /* Fetch log row with user_name for live broadcast */
+                const logWithUser = await pool.query(
+                    `SELECT al.*, du.name AS user_name
+                     FROM access_logs al
+                     LEFT JOIN door_users du ON du.id = al.door_user_id
+                     WHERE al.id = $1`,
+                    [evResult.rows[0].id]
+                );
+
                 if (broadcast) {
                     broadcast({
                         type:     'event',
                         serial:   mqttId,
                         deviceId: device.id,
-                        data:     evResult.rows[0]
+                        data:     logWithUser.rows[0]
                     });
                 }
             }
