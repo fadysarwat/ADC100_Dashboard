@@ -1140,14 +1140,14 @@ document.getElementById('qrimg').onload = function() {
                     showWifiFeedback('❌ Device returned: ' + data.result, 'error');
                 }
             }
-            if (data.cmd === 'apply_wifi') {
-                if (data.result === 'OK') {
-                    showWifiFeedback('✅ WiFi updated — device reconnected!', 'success');
-                } else {
-                    showWifiFeedback('❌ WiFi apply failed: ' + data.result, 'error');
-                }
-                setTimeout(resetWifiFlow, 4000);
+        if (data.cmd === 'apply_wifi') {
+            if (data.result === 'OK' || data.result === 'APPLYING') {
+                showWifiFeedback('✅ Apply command sent — device is restarting with new WiFi...', 'success');
+            } else {
+                showWifiFeedback('❌ WiFi apply failed: ' + data.result, 'error');
             }
+            setTimeout(resetWifiFlow, 4000);
+        }
         }
 
         async function sendSchedule() {
