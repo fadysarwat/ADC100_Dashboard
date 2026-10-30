@@ -13,6 +13,7 @@ const credentialsRouter = require('./src/routes/credentials');
 const tempPinsRouter    = require('./src/routes/temppins');
 const appRouter         = require('./src/routes/app');
 const appUsersRouter    = require('./src/routes/appusers');
+const doorUsersRouter   = require('./src/routes/users');
 const { startMqtt }     = require('./src/mqtt');
 const startMonitor      = require('./src/monitor');
 
@@ -108,6 +109,7 @@ app.use('/api/credentials', requireAuth, credentialsRouter);
 app.use('/api/temppins',    requireAuth, tempPinsRouter);
 app.use('/api/app',         appRouter);
 app.use('/api/appusers',    requireAuth, appUsersRouter);
+app.use('/api/users',       requireAuth, doorUsersRouter);
 
 /* ── Protect HTML pages ── */
 app.get('/', requireAuth, (req, res) => {
@@ -130,6 +132,9 @@ app.get('/temppin.html', requireAuth, (req, res) => {
 });
 app.get('/appusers.html', requireAuth, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'appusers.html'));
+});
+app.get('/users.html', requireAuth, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'users.html'));
 });
 
 /* ── Public files (login page) ── */

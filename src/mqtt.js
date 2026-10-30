@@ -145,10 +145,27 @@ function startMqtt(broadcastFn) {
                     }
                 }
 
+                /* Lookup door_user_id from identifier if present */
+                let doorUserId = null;
+                if (payload.identifier) {
+                    const userCheck = await pool.query(
+                        `SELECT uc.user_id FROM user_credentials uc
+                         JOIN door_users du ON du.id = uc.user_id
+                         WHERE uc.device_id = $1
+                         AND uc.identifier = $2
+                         AND du.active = TRUE
+                         LIMIT 1`,
+                        [device.id, payload.identifier]
+                    );
+                    if (userCheck.rows.length > 0) {
+                        doorUserId = userCheck.rows[0].user_id;
+                    }
+                }
+
                 const evResult = await pool.query(
-                    `INSERT INTO access_logs (device_id, method, result)
-                    VALUES ($1, $2, $3) RETURNING *`,
-                    [device.id, method, payload.result]
+                    `INSERT INTO access_logs (device_id, method, result, door_user_id)
+                    VALUES ($1, $2, $3, $4) RETURNING *`,
+                    [device.id, method, payload.result, doorUserId]
                 );
 
                 console.log(`Access event from ${mqttId} — ${payload.method}: ${payload.result}`);

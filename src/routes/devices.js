@@ -201,28 +201,31 @@ router.get('/:id/logs', async (req, res) => {
     try {
         const { method, result, from, to } = req.query;
 
-        let query  = 'SELECT * FROM access_logs WHERE device_id = $1';
+        let query  = `SELECT al.*, du.name AS user_name
+                      FROM access_logs al
+                      LEFT JOIN door_users du ON du.id = al.door_user_id
+                      WHERE al.device_id = $1`;
         let params = [req.params.id];
         let idx    = 2;
 
         if (method) {
-            query += ` AND method = $${idx++}`;
+            query += ` AND al.method = $${idx++}`;
             params.push(method);
         }
         if (result) {
-            query += ` AND result = $${idx++}`;
+            query += ` AND al.result = $${idx++}`;
             params.push(result);
         }
         if (from) {
-            query += ` AND created_at >= $${idx++}`;
+            query += ` AND al.created_at >= $${idx++}`;
             params.push(new Date(from));
         }
         if (to) {
-            query += ` AND created_at <= $${idx++}`;
+            query += ` AND al.created_at <= $${idx++}`;
             params.push(new Date(to));
         }
 
-        query += ' ORDER BY created_at DESC LIMIT 200';
+        query += ' ORDER BY al.created_at DESC LIMIT 200';
 
         const dbResult = await pool.query(query, params);
         res.json(dbResult.rows);
@@ -235,12 +238,16 @@ router.get('/:id/logs', async (req, res) => {
 router.get('/:id/logs/export', async (req, res) => {
     try {
         const result = await pool.query(
-            'SELECT * FROM access_logs WHERE device_id = $1 ORDER BY created_at DESC',
+            `SELECT al.*, du.name AS user_name
+             FROM access_logs al
+             LEFT JOIN door_users du ON du.id = al.door_user_id
+             WHERE al.device_id = $1
+             ORDER BY al.created_at DESC`,
             [req.params.id]
         );
-        const header = 'ID,Method,Result,Time\n';
+        const header = 'ID,Method,Result,User,Time\n';
         const csv    = result.rows.map(r =>
-            `${r.id},${r.method},${r.result},"${new Date(r.created_at).toLocaleString()}"`
+            `${r.id},${r.method},${r.result},"${r.user_name || '—'}","${new Date(r.created_at).toLocaleString()}"`
         ).join('\n');
 
         res.setHeader('Content-Type', 'text/csv');
@@ -300,11 +307,11 @@ router.post('/command', async (req, res) => {
         }
 
         if (cmd === 'set_wifi') {
-            const { ssid, pass } = req.body;
-            if (!ssid || !pass)
+            const { ssid, password } = req.body;
+            if (!ssid || !password)
                 return res.status(400).json({ error: 'ssid and password required for set_wifi' });
             payload.ssid     = ssid;
-            payload.pass = pass;
+            payload.password = password;
         }
 
         if (cmd === 'apply_wifi') {
