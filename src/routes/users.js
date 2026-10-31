@@ -137,10 +137,44 @@ router.post('/:id/credentials', async (req, res) => {
     }
 });
 
-/* DELETE credential */
+/* DELETE credential + send MQTT to device */
 router.delete('/credentials/:id', async (req, res) => {
     try {
+        /* Get credential info before deleting */
+        const credResult = await pool.query(
+            `SELECT uc.*, d.mqtt_id, d.serial, du.name AS user_name
+             FROM user_credentials uc
+             JOIN devices d ON d.id = uc.device_id
+             JOIN door_users du ON du.id = uc.user_id
+             WHERE uc.id = $1`,
+            [req.params.id]
+        );
+
+        if (credResult.rows.length === 0)
+            return res.status(404).json({ error: 'Credential not found' });
+
+        const cred   = credResult.rows[0];
+        const mqttId = cred.mqtt_id || cred.serial;
+
+        /* Delete from DB */
         await pool.query('DELETE FROM user_credentials WHERE id = $1', [req.params.id]);
+
+        /* Send MQTT delete_credential to device */
+        const ts      = Math.floor(Date.now() / 1000);
+        const message = `delete_credential:${ts}`;
+        const hmac    = crypto.createHmac('sha256', process.env.MQTT_SECRET)
+                              .update(message)
+                              .digest('hex');
+
+        const payload = {
+            cmd:   'delete_credential',
+            ts,
+            hmac,
+            label: cred.user_name
+        };
+
+        publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
+
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
