@@ -151,9 +151,9 @@ function startMqtt(broadcastFn) {
                     }
                 }
 
-                /* Lookup door_user_id from identifier if present */
+                /* Lookup door_user_id from identifier if present (RFID / PIN / QR) */
                 let doorUserId = null;
-                if (payload.identifier) {
+                if (payload.identifier && method !== 'BLE') {
                     const userCheck = await pool.query(
                         `SELECT uc.user_id FROM user_credentials uc
                          JOIN door_users du ON du.id = uc.user_id
@@ -185,12 +185,18 @@ function startMqtt(broadcastFn) {
                     [evResult.rows[0].id]
                 );
 
+                /* BLE access — identifier is the app username, not a door_user */
+                const rowData = logWithUser.rows[0];
+                if (method === 'BLE' && payload.identifier) {
+                    rowData.user_name = payload.identifier;
+                }
+
                 if (broadcast) {
                     broadcast({
                         type:     'event',
                         serial:   mqttId,
                         deviceId: device.id,
-                        data:     logWithUser.rows[0]
+                        data:     rowData
                     });
                 }
             }
