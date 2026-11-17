@@ -134,9 +134,9 @@ function startMqtt(broadcastFn) {
                     return;
                 }
 
-                /* Logs events — broadcast only, no DB insert */
+                /* ── Logs event — broadcast to dashboard, no DB insert ── */
                 if (payload.event === 'logs') {
-                    console.log(`Logs event from ${mqttId} — total: ${payload.total}`);
+                    console.log(`Logs from ${mqttId} — ${payload.total} entries`);
                     if (broadcast) {
                         broadcast({
                             type:     'logs',
@@ -235,4 +235,56 @@ function publish(topic, message) {
     console.log(`MQTT published to ${topic}: ${message}`);
 }
 
-module.exports = { startMqtt, publish };
+/**
+ * sendGetLogs — publishes a signed get_logs command to a device
+ * @param {string} mqttId   — the device's MQTT ID (e.g. "Fady_Door_A")
+ * @returns {boolean}       — false if MQTT client not ready
+ */
+function sendGetLogs(mqttId) {
+    if (!client) return false;
+
+    const crypto = require('crypto');
+    const secret = process.env.MQTT_CMD_SECRET || 'ADC100_MQTT_SECRET_KEY_2024';
+    const ts     = Math.floor(Date.now() / 1000);
+    const cmd    = 'get_logs';
+
+    const hmac = crypto
+        .createHmac('sha256', secret)
+        .update(`${cmd}:${ts}`)
+        .digest('hex');
+
+    const topic   = `adc100/${mqttId}/cmd`;
+    const message = JSON.stringify({ cmd, ts, hmac });
+
+    client.publish(topic, message, { qos: 1 });
+    console.log(`get_logs sent to ${mqttId}`);
+    return true;
+}
+
+/**
+ * sendClearLogs — publishes a signed clear_logs command to a device
+ * @param {string} mqttId
+ * @returns {boolean}
+ */
+function sendClearLogs(mqttId) {
+    if (!client) return false;
+
+    const crypto = require('crypto');
+    const secret = process.env.MQTT_CMD_SECRET || 'ADC100_MQTT_SECRET_KEY_2024';
+    const ts     = Math.floor(Date.now() / 1000);
+    const cmd    = 'clear_logs';
+
+    const hmac = crypto
+        .createHmac('sha256', secret)
+        .update(`${cmd}:${ts}`)
+        .digest('hex');
+
+    const topic   = `adc100/${mqttId}/cmd`;
+    const message = JSON.stringify({ cmd, ts, hmac });
+
+    client.publish(topic, message, { qos: 1 });
+    console.log(`clear_logs sent to ${mqttId}`);
+    return true;
+}
+
+module.exports = { startMqtt, publish, sendGetLogs, sendClearLogs };
