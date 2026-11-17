@@ -318,6 +318,14 @@ router.post('/command', async (req, res) => {
             /* No extra fields needed — device applies the pending credentials it already stored */
         }
 
+        if (cmd === 'get_logs') {
+            /* No extra fields needed — device responds on event topic with logs payload */
+        }
+
+        if (cmd === 'clear_logs') {
+            /* No extra fields needed — device clears its log buffer */
+        }
+
         if (cmd === 'set_ble_name') {
             if (!name) return res.status(400).json({ error: 'name required for set_ble_name' });
             if (!name.startsWith('ADC100-'))

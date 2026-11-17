@@ -134,6 +134,20 @@ function startMqtt(broadcastFn) {
                     return;
                 }
 
+                /* Logs events — broadcast only, no DB insert */
+                if (payload.event === 'logs') {
+                    console.log(`Logs event from ${mqttId} — total: ${payload.total}`);
+                    if (broadcast) {
+                        broadcast({
+                            type:     'logs',
+                            serial:   mqttId,
+                            deviceId: device.id,
+                            data:     payload
+                        });
+                    }
+                    return;
+                }
+
                 /* Access events — save to DB and broadcast */
                 let method = payload.method;
 

@@ -308,6 +308,27 @@
             color: #00C2FF;
             border: 1px solid #00C2FF40;
         }
+
+        /* Device Log level badges */
+        .log-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            font-family: monospace;
+            min-width: 30px;
+            text-align: center;
+        }
+        .log-badge-E { background: #FF4C4C20; color: #FF4C4C; border: 1px solid #FF4C4C60; }
+        .log-badge-W { background: #FFB34720; color: #FFB347; border: 1px solid #FFB34760; }
+        .log-badge-I { background: #1e2d4a;   color: #8A9BB5; border: 1px solid #2a3d5e;   }
+
+        .dev-logs-btn-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
     </style>
 </head>
 <body>
@@ -613,6 +634,32 @@
             </div>
         </div>
 
+        <!-- Device Logs -->
+        <div class="card" style="margin-bottom: 24px;">
+            <div class="card-header">
+                <h3>Device Logs</h3>
+                <span id="devLogsMeta" style="font-size:12px; color:#8A9BB5;"></span>
+            </div>
+            <div class="dev-logs-btn-row">
+                <button class="btn btn-secondary btn-sm" style="width:auto;" onclick="sendGetLogs()">📋 Get Logs</button>
+                <button class="btn btn-danger btn-sm"    style="width:auto;" onclick="sendClearLogs()">🗑️ Clear Logs</button>
+            </div>
+            <div id="devLogsFeedback" class="cmd-feedback" style="margin-bottom:10px;"></div>
+            <table class="logs-table" id="devLogsTable" style="display:none;">
+                <thead>
+                    <tr>
+                        <th style="width:34px;">Lvl</th>
+                        <th>Timestamp</th>
+                        <th>Uptime</th>
+                        <th>Tag</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody id="devLogsBody"></tbody>
+            </table>
+            <div id="devLogsEmpty" class="empty-logs">Press "Get Logs" to fetch device logs</div>
+        </div>
+
         <!-- Access Logs -->
         <div class="card">
             <div class="card-header">
@@ -693,6 +740,7 @@
                 if (msg.type === 'event')     prependLog(msg.data);
                 if (msg.type === 'status')    updateStatus(msg.data.status);
                 if (msg.type === 'wifi')      handleWifiEvent(msg.data);
+                if (msg.type === 'logs')      renderDevLogs(msg.data);
             };
         }
 
@@ -1177,6 +1225,86 @@ document.getElementById('qrimg').onload = function() {
 
         function exportLogs() {
             window.open(`/api/devices/${deviceId}/logs/export`, '_blank');
+        }
+
+        /* ── Device Logs ── */
+        async function sendGetLogs() {
+            const result = await sendSecureCmd('get_logs');
+            if (result.success) {
+                showDevLogsFeedback('✅ Logs request sent — waiting for device response...', 'success');
+            } else {
+                showDevLogsFeedback('❌ Failed: ' + result.error, 'error');
+            }
+        }
+
+        async function sendClearLogs() {
+            if (!confirm('Clear all logs on the device?')) return;
+            const result = await sendSecureCmd('clear_logs');
+            if (result.success) {
+                showDevLogsFeedback('✅ Clear logs command sent', 'success');
+                document.getElementById('devLogsBody').innerHTML = '';
+                document.getElementById('devLogsTable').style.display = 'none';
+                document.getElementById('devLogsEmpty').textContent   = 'Logs cleared on device';
+                document.getElementById('devLogsEmpty').style.display = 'block';
+                document.getElementById('devLogsMeta').textContent    = '';
+            } else {
+                showDevLogsFeedback('❌ Failed: ' + result.error, 'error');
+            }
+        }
+
+        function renderDevLogs(data) {
+            const entries = data.entries || [];
+            const total   = data.total   || entries.length;
+
+            document.getElementById('devLogsMeta').textContent = `${total} entr${total === 1 ? 'y' : 'ies'}`;
+
+            if (entries.length === 0) {
+                document.getElementById('devLogsTable').style.display = 'none';
+                document.getElementById('devLogsEmpty').textContent   = 'No log entries on device';
+                document.getElementById('devLogsEmpty').style.display = 'block';
+                return;
+            }
+
+            /* oldest first */
+            const sorted = [...entries].reverse();
+
+            document.getElementById('devLogsBody').innerHTML = sorted.map(e => {
+                const lvl       = (e.lvl || 'I').toUpperCase();
+                const badgeCls  = `log-badge log-badge-${lvl === 'E' ? 'E' : lvl === 'W' ? 'W' : 'I'}`;
+                const tsStr     = e.ts ? new Date(e.ts * 1000).toLocaleString() : '—';
+                const upStr     = e.up !== undefined ? formatUptime(e.up) : '—';
+                const tag       = e.tag  || '—';
+                const msg       = e.msg  || '';
+                return `<tr>
+                    <td><span class="${badgeCls}">${lvl}</span></td>
+                    <td style="white-space:nowrap; font-size:12px;">${tsStr}</td>
+                    <td style="white-space:nowrap; font-size:12px; color:#8A9BB5;">${upStr}</td>
+                    <td style="font-family:monospace; font-size:12px; color:#00C2FF;">${tag}</td>
+                    <td style="font-size:13px;">${msg}</td>
+                </tr>`;
+            }).join('');
+
+            document.getElementById('devLogsTable').style.display = '';
+            document.getElementById('devLogsEmpty').style.display = 'none';
+
+            showDevLogsFeedback('✅ Logs received', 'success');
+        }
+
+        function formatUptime(ms) {
+            const totalSec = Math.floor(ms / 1000);
+            const h = Math.floor(totalSec / 3600);
+            const m = Math.floor((totalSec % 3600) / 60);
+            const s = totalSec % 60;
+            if (h > 0) return `${h}h ${m}m ${s}s`;
+            if (m > 0) return `${m}m ${s}s`;
+            return `${s}s`;
+        }
+
+        function showDevLogsFeedback(msg, type) {
+            const el = document.getElementById('devLogsFeedback');
+            el.textContent = msg;
+            el.className   = 'cmd-feedback ' + type;
+            setTimeout(() => { el.className = 'cmd-feedback'; }, 4000);
         }
 
         /* ── Init ── */
