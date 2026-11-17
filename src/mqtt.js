@@ -15,20 +15,28 @@ function parseLogsPayload(rawStr) {
     const total = parseInt((rawStr.match(/"total"\s*:\s*(\d+)/) || [])[1] || '0');
     const entries = [];
 
-    const arrMatch = rawStr.match(/"entries"\s*:\s*\[([\s\S]*)\]/);
-    if (!arrMatch) return { event, total, entries };
+    /* Split entries by locating each {"lvl": header. Because msg values may
+       contain unescaped " and nested {}, we cannot rely on JSON structure.
+       Strategy: find every position where a new entry starts ({"lvl":), then
+       slice the raw string between consecutive starts and extract fields. */
+    const starts = [];
+    const startRe = /\{(?="lvl"\s*:)/g;
+    let sm;
+    while ((sm = startRe.exec(rawStr)) !== null) starts.push(sm.index);
 
-    /* Split on entry boundaries },{  */
-    const parts = arrMatch[1].split(/(?<=\})\s*,\s*(?=\{)/);
-
-    for (const part of parts) {
-        const lvl = (part.match(/"lvl"\s*:\s*"([^"]*)"/) || [])[1] || 'I';
-        const ts  = parseInt((part.match(/"ts"\s*:\s*(\d+)/) || [])[1] || '0');
-        const up  = parseInt((part.match(/"up"\s*:\s*(\d+)/) || [])[1] || '0');
-        const tag = (part.match(/"tag"\s*:\s*"([^"]*)"/) || [])[1] || '';
-        /* msg: everything after "msg":" up to the final " before end of entry */
-        const msgMatch = part.match(/"msg"\s*:\s*"([\s\S]*)"\s*\}?\s*$/);
-        const msg = msgMatch ? msgMatch[1] : '';
+    for (let i = 0; i < starts.length; i++) {
+        const chunk = rawStr.slice(starts[i], starts[i + 1] ?? rawStr.length);
+        const lvl = (chunk.match(/"lvl"\s*:\s*"([^"]*)"/) || [])[1] || 'I';
+        const ts  = parseInt((chunk.match(/"ts"\s*:\s*(\d+)/) || [])[1] || '0');
+        const up  = parseInt((chunk.match(/"up"\s*:\s*(\d+)/) || [])[1] || '0');
+        const tag = (chunk.match(/"tag"\s*:\s*"([^"]*)"/) || [])[1] || '';
+        /* msg: everything after "msg":" to end of chunk.
+           Strip the LAST occurrence of "} (or "}]) that closes the entry,
+           leaving any embedded JSON in msg intact. */
+        const msgM = chunk.match(/"msg"\s*:\s*"([\s\S]*)/);
+        let msg = msgM ? msgM[1] : '';
+        /* Remove last "}  closing sequence: last " then optional whitespace/},] */
+        msg = msg.replace(/"[}\]\s,]*$/, '').replace(/\\"/g, '"');
         entries.push({ lvl, ts, up, tag, msg });
     }
 
