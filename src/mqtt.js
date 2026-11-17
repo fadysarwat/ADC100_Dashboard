@@ -5,6 +5,37 @@ require('dotenv').config();
 let client    = null;
 let broadcast = null;
 
+/* Firmware sometimes logs raw JSON inside msg values without proper escaping.
+   This parser attempts standard JSON.parse first, then falls back to a
+   field-by-field extractor that tolerates unescaped quotes in msg strings. */
+function parseLogsPayload(rawStr) {
+    try { return JSON.parse(rawStr); } catch (_) {}
+
+    const event = (rawStr.match(/"event"\s*:\s*"([^"]*)"/) || [])[1];
+    const total = parseInt((rawStr.match(/"total"\s*:\s*(\d+)/) || [])[1] || '0');
+    const entries = [];
+
+    const arrMatch = rawStr.match(/"entries"\s*:\s*\[([\s\S]*)\]/);
+    if (!arrMatch) return { event, total, entries };
+
+    /* Split on entry boundaries },{  */
+    const parts = arrMatch[1].split(/(?<=\})\s*,\s*(?=\{)/);
+
+    for (const part of parts) {
+        const lvl = (part.match(/"lvl"\s*:\s*"([^"]*)"/) || [])[1] || 'I';
+        const ts  = parseInt((part.match(/"ts"\s*:\s*(\d+)/) || [])[1] || '0');
+        const up  = parseInt((part.match(/"up"\s*:\s*(\d+)/) || [])[1] || '0');
+        const tag = (part.match(/"tag"\s*:\s*"([^"]*)"/) || [])[1] || '';
+        /* msg: everything after "msg":" up to the final " before end of entry */
+        const msgMatch = part.match(/"msg"\s*:\s*"([\s\S]*)"\s*\}?\s*$/);
+        const msg = msgMatch ? msgMatch[1] : '';
+        entries.push({ lvl, ts, up, tag, msg });
+    }
+
+    console.warn(`MQTT logs parse recovered via fallback — entries:${entries.length}`);
+    return { event, total, entries };
+}
+
 function startMqtt(broadcastFn) {
     broadcast = broadcastFn;
 
@@ -31,8 +62,20 @@ function startMqtt(broadcastFn) {
         try {
             payload = JSON.parse(message.toString());
         } catch (err) {
-            console.error('MQTT parse error:', err.message);
-            return;
+            /* Standard parse failed — could be a logs event with unescaped msg content.
+               Peek at the raw string: if it looks like a logs event, use the tolerant
+               parseLogsPayload(); otherwise give up. */
+            const raw = message.toString();
+            if (raw.includes('"event":"logs"') || raw.includes('"event": "logs"')) {
+                payload = parseLogsPayload(raw);
+                if (!payload.event) {
+                    console.error('MQTT parse error (logs fallback also failed):', err.message);
+                    return;
+                }
+            } else {
+                console.error('MQTT parse error:', err.message);
+                return;
+            }
         }
 
         try {
@@ -136,7 +179,7 @@ function startMqtt(broadcastFn) {
 
                 /* ── Logs event — broadcast to dashboard, no DB insert ── */
                 if (payload.event === 'logs') {
-                    console.log(`Logs from ${mqttId} — ${payload.total} entries`);
+                    console.log(`Logs event from ${mqttId} — total: ${payload.total}, entries: ${(payload.entries || []).length}`);
                     if (broadcast) {
                         broadcast({
                             type:     'logs',
