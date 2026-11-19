@@ -3,6 +3,7 @@ const router      = express.Router();
 const pool        = require('../db/pool');
 const { publish } = require('../mqtt');
 const crypto      = require('crypto');
+const { deviceScope } = require('../auth');
 require('dotenv').config();
 
 /* Generate unique serial number */
@@ -15,11 +16,17 @@ function generateSerial() {
     return `ADC100-${year}${month}${day}-${random}`;
 }
 
-/* GET all devices */
+/* GET devices — only the ones the caller is allowed to see */
 router.get('/', async (req, res) => {
     try {
+        const scope  = deviceScope(req.user, 'd', 1);
         const result = await pool.query(
-            'SELECT * FROM devices ORDER BY created_at DESC'
+            `SELECT d.*, o.name AS org_name
+               FROM devices d
+               LEFT JOIN organizations o ON o.id = d.org_id
+              WHERE ${scope.clause}
+              ORDER BY d.created_at DESC`,
+            scope.params
         );
         res.json(result.rows);
     } catch (err) {
