@@ -5,7 +5,12 @@ const bcrypt  = require('bcrypt');
 const jwt     = require('jsonwebtoken');
 require('dotenv').config();
 
-const JWT_SECRET  = process.env.JWT_SECRET || 'adc100_app_jwt_secret_2024';
+/* No hard-coded fallback in production: a known secret would let anyone forge app tokens. */
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+    console.error('FATAL: JWT_SECRET must be set in production.');
+    process.exit(1);
+}
+const JWT_SECRET  = process.env.JWT_SECRET || 'dev-only-jwt-secret-not-for-production';
 const JWT_EXPIRES = '30d';
 
 /* ── POST /api/app/login ── */

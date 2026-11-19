@@ -29,11 +29,22 @@ const PORT   = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+const PROD = process.env.NODE_ENV === 'production';
+if (PROD && !process.env.SESSION_SECRET) {
+    console.error('FATAL: SESSION_SECRET must be set in production.');
+    process.exit(1);
+}
+if (PROD) app.set('trust proxy', 1);     /* behind Railway's proxy: needed for secure cookies */
+
+/* Sessions live in PostgreSQL (table "session", created on first use), so
+   logins survive deploys/restarts and work with more than one server. */
+const PgStore = require('connect-pg-simple')(session);
 const sessionMiddleware = session({
-    secret:            process.env.SESSION_SECRET,
+    store:             new PgStore({ pool, tableName: 'session', createTableIfMissing: true }),
+    secret:            process.env.SESSION_SECRET || 'dev-only-secret-not-for-production',
     resave:            false,
     saveUninitialized: false,
-    cookie:            { maxAge: 24 * 60 * 60 * 1000 }
+    cookie:            { maxAge: 24 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax', secure: PROD }
 });
 app.use(sessionMiddleware);
 hub.attach(server, sessionMiddleware);
