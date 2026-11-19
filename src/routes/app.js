@@ -16,8 +16,12 @@ router.post('/login', async (req, res) => {
 
     try {
         /* 1. Find user */
+        /* Disabled user, or user of a disabled customer, cannot log in */
         const userResult = await pool.query(
-            'SELECT * FROM app_users WHERE username = $1 AND is_active = TRUE',
+            `SELECT u.* FROM app_users u
+               LEFT JOIN organizations o ON o.id = u.org_id
+              WHERE u.username = $1 AND u.is_active = TRUE
+                AND (u.org_id IS NULL OR o.is_active = TRUE)`,
             [username]
         );
         if (userResult.rows.length === 0)
@@ -83,6 +87,19 @@ router.get('/keys', async (req, res) => {
     const token = auth.split(' ')[1];
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
+
+        /* A valid token is not enough: the user (and its customer) must still be
+           active, otherwise a disabled user keeps receiving keys until the
+           30-day token expires. */
+        const stillActive = await pool.query(
+            `SELECT 1 FROM app_users u
+               LEFT JOIN organizations o ON o.id = u.org_id
+              WHERE u.id = $1 AND u.is_active = TRUE
+                AND (u.org_id IS NULL OR o.is_active = TRUE)`,
+            [decoded.user_id]
+        );
+        if (stillActive.rows.length === 0)
+            return res.status(401).json({ error: 'Invalid or expired token' });
 
         const doorsResult = await pool.query(
             `SELECT d.id, d.mqtt_id, d.name, d.location, d.ble_name

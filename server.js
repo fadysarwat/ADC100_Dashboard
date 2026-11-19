@@ -1,13 +1,13 @@
 const express      = require('express');
 const path         = require('path');
 const http         = require('http');
-const WebSocket    = require('ws');
 const session      = require('express-session');
 require('dotenv').config();
 
 const initDb            = require('./src/db/init');
 const pool              = require('./src/db/pool');
 const { requireAuth }   = require('./src/auth');
+const { createHub }     = require('./src/ws');
 const authRouter        = require('./src/routes/auth');
 const devicesRouter     = require('./src/routes/devices');
 const credentialsRouter = require('./src/routes/credentials');
@@ -15,22 +15,28 @@ const tempPinsRouter    = require('./src/routes/temppins');
 const appRouter         = require('./src/routes/app');
 const appUsersRouter    = require('./src/routes/appusers');
 const doorUsersRouter   = require('./src/routes/users');
+const orgsRouter        = require('./src/routes/orgs');
+const dashUsersRouter   = require('./src/routes/dashusers');
+const auditRouter       = require('./src/routes/audit');
 const { startMqtt }     = require('./src/mqtt');
 const startMonitor      = require('./src/monitor');
 
 const app    = express();
 const server = http.createServer(app);
-const wss    = new WebSocket.Server({ server });
+const hub    = createHub();          /* authenticated, tenant-filtered WebSocket (src/ws.js) */
+app.locals.hub = hub;
 const PORT   = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(session({
+const sessionMiddleware = session({
     secret:            process.env.SESSION_SECRET,
     resave:            false,
     saveUninitialized: false,
     cookie:            { maxAge: 24 * 60 * 60 * 1000 }
-}));
+});
+app.use(sessionMiddleware);
+hub.attach(server, sessionMiddleware);
 
 /* ── Auth: login / logout / me / change-password (src/routes/auth.js) ── */
 app.use('/api', authRouter);
@@ -42,6 +48,9 @@ app.use('/api/temppins',    requireAuth, tempPinsRouter);
 app.use('/api/app',         appRouter);
 app.use('/api/appusers',    requireAuth, appUsersRouter);
 app.use('/api/users',       requireAuth, doorUsersRouter);
+app.use('/api/orgs',            requireAuth, orgsRouter);
+app.use('/api/dashboard-users', requireAuth, dashUsersRouter);
+app.use('/api/audit',           requireAuth, auditRouter);
 
 /* ── Protect HTML pages ── */
 app.get('/', requireAuth, (req, res) => {
@@ -72,27 +81,16 @@ app.get('/users.html', requireAuth, (req, res) => {
 /* ── Public files (login page) ── */
 app.use(express.static(path.join(__dirname, 'public')));
 
-/* Broadcast to all connected WebSocket clients */
-function broadcast(data) {
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(data));
-        }
-    });
-}
-
-wss.on('connection', (ws) => {
-    console.log('Dashboard client connected');
-    ws.on('close', () => console.log('Dashboard client disconnected'));
-});
-
 async function start() {
     await initDb();
-    startMqtt(broadcast);
-    startMonitor(broadcast);
+    startMqtt(hub.broadcast);
+    startMonitor(hub.broadcast);
     server.listen(PORT, () => {
         console.log(`ADC-100 Dashboard running on http://localhost:${PORT}`);
     });
 }
 
-start();
+/* Started only when run directly (`node server.js`); tests import the app instead. */
+if (require.main === module) start();
+
+module.exports = { app, server, hub };

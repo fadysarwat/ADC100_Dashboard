@@ -46,7 +46,11 @@ router.post('/login', async (req, res) => {
 
 /* GET /api/logout */
 router.get('/logout', (req, res) => {
-    req.session.destroy(() => res.redirect('/login.html'));
+    const sid = req.sessionID;
+    req.session.destroy(() => {
+        if (req.app.locals.hub) req.app.locals.hub.disconnectSession(sid);
+        res.redirect('/login.html');
+    });
 });
 
 /* GET /api/me — who am I, what may I do (used by the UI to hide controls;

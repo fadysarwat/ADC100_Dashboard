@@ -3,6 +3,8 @@ const router  = express.Router();
 const pool    = require('../db/pool');
 const { publish } = require('../mqtt');
 const crypto  = require('crypto');
+const { requireDevice, hasPerm } = require('../auth');
+const { audit } = require('../audit');
 require('dotenv').config();
 
 function generateHmac(cmd, ts) {
@@ -11,42 +13,44 @@ function generateHmac(cmd, ts) {
                  .digest('hex');
 }
 
-/* GET all credentials for a device */
-router.get('/:deviceId', async (req, res) => {
+/* Every route below is scoped to ONE device. requireDevice() checks both the
+   role permission and that the device belongs to the caller's customer
+   (otherwise 404), and exposes the device as req.device. */
+
+/* GET all credentials for a device.
+   Roles that can only VIEW (not manage) never receive the secret itself. */
+router.get('/:deviceId', requireDevice('credentials.view', 'deviceId'), async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT * FROM credentials WHERE device_id = $1 ORDER BY created_at DESC',
-            [req.params.deviceId]
+            [req.device.id]
         );
-        res.json(result.rows);
+        const canSeeSecrets = hasPerm(req.user.role, 'credentials.manage');
+        res.json(canSeeSecrets
+            ? result.rows
+            : result.rows.map(r => ({ ...r, cred_data: '••••' })));
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
 /* POST add credential */
-router.post('/:deviceId', async (req, res) => {
+router.post('/:deviceId', requireDevice('credentials.manage', 'deviceId'), async (req, res) => {
     const { label, cred_type, cred_data, is_duress } = req.body;
     if (!label || !cred_type || !cred_data)
         return res.status(400).json({ error: 'label, cred_type, cred_data required' });
 
     try {
+        const device = req.device;
+
         /* Save to DB */
         const result = await pool.query(
             `INSERT INTO credentials (device_id, label, cred_type, cred_data, is_duress, is_active)
              VALUES ($1,$2,$3,$4,$5,TRUE) RETURNING *`,
-            [req.params.deviceId, label, cred_type, cred_data, is_duress || false]
+            [device.id, label, cred_type, cred_data, is_duress || false]
         );
 
-        /* Get device mqtt_id */
-        const devResult = await pool.query(
-            'SELECT mqtt_id FROM devices WHERE id = $1',
-            [req.params.deviceId]
-        );
-        if (devResult.rows.length === 0)
-            return res.status(404).json({ error: 'Device not found' });
-
-        const mqttId = devResult.rows[0].mqtt_id;
+        const mqttId = device.mqtt_id || device.serial;
         const ts     = Math.floor(Date.now() / 1000);
         const hmac   = generateHmac('add_credential', ts);
 
@@ -62,6 +66,11 @@ router.post('/:deviceId', async (req, res) => {
         };
         publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
 
+        await audit(req, 'credential.add', {
+            targetType: 'device', targetId: device.id, orgId: device.org_id,
+            details: { label, cred_type, duress: !!is_duress }
+        });
+
         res.json(result.rows[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -69,12 +78,14 @@ router.post('/:deviceId', async (req, res) => {
 });
 
 /* DELETE credential */
-router.delete('/:deviceId/:credId', async (req, res) => {
+router.delete('/:deviceId/:credId', requireDevice('credentials.manage', 'deviceId'), async (req, res) => {
     try {
-        /* Get credential info */
+        const device = req.device;
+
+        /* The credential must belong to THIS device (already a customer-owned one) */
         const credResult = await pool.query(
             'SELECT * FROM credentials WHERE id = $1 AND device_id = $2',
-            [req.params.credId, req.params.deviceId]
+            [req.params.credId, device.id]
         );
         if (credResult.rows.length === 0)
             return res.status(404).json({ error: 'Credential not found' });
@@ -82,14 +93,9 @@ router.delete('/:deviceId/:credId', async (req, res) => {
         const cred = credResult.rows[0];
 
         /* Delete from DB */
-        await pool.query('DELETE FROM credentials WHERE id = $1', [req.params.credId]);
+        await pool.query('DELETE FROM credentials WHERE id = $1', [cred.id]);
 
-        /* Get device mqtt_id */
-        const devResult = await pool.query(
-            'SELECT mqtt_id FROM devices WHERE id = $1',
-            [req.params.deviceId]
-        );
-        const mqttId = devResult.rows[0].mqtt_id;
+        const mqttId = device.mqtt_id || device.serial;
         const ts     = Math.floor(Date.now() / 1000);
         const hmac   = generateHmac('delete_credential', ts);
 
@@ -101,6 +107,11 @@ router.delete('/:deviceId/:credId', async (req, res) => {
             label: cred.label
         };
         publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
+
+        await audit(req, 'credential.delete', {
+            targetType: 'device', targetId: device.id, orgId: device.org_id,
+            details: { label: cred.label, cred_type: cred.cred_type }
+        });
 
         res.json({ success: true });
     } catch (err) {

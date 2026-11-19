@@ -3,6 +3,8 @@ const router      = express.Router();
 const pool        = require('../db/pool');
 const { publish } = require('../mqtt');
 const crypto      = require('crypto');
+const { requireDevice } = require('../auth');
+const { audit }   = require('../audit');
 require('dotenv').config();
 
 function generateHmac(cmd, ts) {
@@ -15,12 +17,15 @@ function generatePin() {
     return String(Math.floor(1000 + Math.random() * 9000));
 }
 
+/* Temp PINs are secrets, so every route needs 'temppin.manage' and a device
+   that belongs to the caller's customer (see requireDevice). */
+
 /* GET all temp pins for a device */
-router.get('/:deviceId', async (req, res) => {
+router.get('/:deviceId', requireDevice('temppin.manage', 'deviceId'), async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT * FROM temp_pins WHERE device_id = $1 ORDER BY created_at DESC',
-            [req.params.deviceId]
+            [req.device.id]
         );
         res.json(result.rows);
     } catch (err) {
@@ -29,21 +34,13 @@ router.get('/:deviceId', async (req, res) => {
 });
 
 /* POST add temp pin */
-router.post('/:deviceId', async (req, res) => {
+router.post('/:deviceId', requireDevice('temppin.manage', 'deviceId'), async (req, res) => {
     const { label, iat, exp, pin } = req.body;
     if (!iat || !exp)
         return res.status(400).json({ error: 'iat and exp required' });
 
     try {
-        /* Get device */
-        const devResult = await pool.query(
-            'SELECT * FROM devices WHERE id = $1',
-            [req.params.deviceId]
-        );
-        if (devResult.rows.length === 0)
-            return res.status(404).json({ error: 'Device not found' });
-
-        const device   = devResult.rows[0];
+        const device   = req.device;
         const finalPin = pin || generatePin();
         const pinLabel = label || `temp_${finalPin}`;
 
@@ -51,12 +48,12 @@ router.post('/:deviceId', async (req, res) => {
         const result = await pool.query(
             `INSERT INTO temp_pins (device_id, pin, label, iat, exp, active)
              VALUES ($1, $2, $3, $4, $5, TRUE) RETURNING *`,
-            [req.params.deviceId, finalPin, pinLabel, new Date(iat), new Date(exp)]
+            [device.id, finalPin, pinLabel, new Date(iat), new Date(exp)]
         );
 
         /* Send add_credential to Controller via MQTT */
-        const ts   = Math.floor(Date.now() / 1000);
-        const hmac = generateHmac('add_credential', ts);
+        const ts      = Math.floor(Date.now() / 1000);
+        const hmac    = generateHmac('add_credential', ts);
         const mqtt_id = device.mqtt_id || device.serial;
 
         const payload = {
@@ -70,6 +67,11 @@ router.post('/:deviceId', async (req, res) => {
         };
         publish(`adc100/${mqtt_id}/cmd`, JSON.stringify(payload));
 
+        await audit(req, 'temppin.add', {
+            targetType: 'device', targetId: device.id, orgId: device.org_id,
+            details: { label: pinLabel, iat, exp }
+        });
+
         res.json({ ...result.rows[0], pin: finalPin });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -77,28 +79,23 @@ router.post('/:deviceId', async (req, res) => {
 });
 
 /* DELETE temp pin — removes from Controller too */
-router.delete('/:deviceId/:pinId', async (req, res) => {
+router.delete('/:deviceId/:pinId', requireDevice('temppin.manage', 'deviceId'), async (req, res) => {
     try {
-        /* Get pin info */
+        const device = req.device;
+
+        /* The PIN must belong to THIS device */
         const pinResult = await pool.query(
             'SELECT * FROM temp_pins WHERE id = $1 AND device_id = $2',
-            [req.params.pinId, req.params.deviceId]
+            [req.params.pinId, device.id]
         );
         if (pinResult.rows.length === 0)
             return res.status(404).json({ error: 'Pin not found' });
 
-        const pin = pinResult.rows[0];
-
-        /* Get device */
-        const devResult = await pool.query(
-            'SELECT * FROM devices WHERE id = $1',
-            [req.params.deviceId]
-        );
-        const device  = devResult.rows[0];
+        const pin     = pinResult.rows[0];
         const mqtt_id = device.mqtt_id || device.serial;
 
         /* Delete from DB */
-        await pool.query('DELETE FROM temp_pins WHERE id = $1', [req.params.pinId]);
+        await pool.query('DELETE FROM temp_pins WHERE id = $1', [pin.id]);
 
         /* Send delete_credential to Controller */
         const ts   = Math.floor(Date.now() / 1000);
@@ -111,6 +108,11 @@ router.delete('/:deviceId/:pinId', async (req, res) => {
             label: pin.label
         };
         publish(`adc100/${mqtt_id}/cmd`, JSON.stringify(payload));
+
+        await audit(req, 'temppin.delete', {
+            targetType: 'device', targetId: device.id, orgId: device.org_id,
+            details: { label: pin.label }
+        });
 
         res.json({ success: true });
     } catch (err) {

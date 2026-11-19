@@ -3,7 +3,8 @@ const router      = express.Router();
 const pool        = require('../db/pool');
 const { publish } = require('../mqtt');
 const crypto      = require('crypto');
-const { deviceScope } = require('../auth');
+const { deviceScope, requirePerm, requireDevice, getAccessibleDevice, hasPerm } = require('../auth');
+const { audit }   = require('../audit');
 require('dotenv').config();
 
 /* Generate unique serial number */
@@ -35,7 +36,7 @@ router.get('/', async (req, res) => {
 });
 
 /* POST generate new serial */
-router.post('/generate-serial', async (req, res) => {
+router.post('/generate-serial', requirePerm('serials.manage'), async (req, res) => {
     try {
         let serial;
         let exists = true;
@@ -55,7 +56,7 @@ router.post('/generate-serial', async (req, res) => {
 });
 
 /* GET all serials */
-router.get('/serials', async (req, res) => {
+router.get('/serials', requirePerm('serials.manage'), async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT * FROM serials ORDER BY created_at DESC'
@@ -66,8 +67,12 @@ router.get('/serials', async (req, res) => {
     }
 });
 
-/* POST generate temporary QR */
-router.post('/temp-qr', async (req, res) => {
+/* POST generate temporary QR
+   PLATFORM-ONLY for now. The token is signed with the single MQTT_SECRET and
+   is not bound to a device, so a QR generated for one customer would open the
+   doors of every customer. It can be opened to customers once the firmware
+   verifies a device-bound token (device id inside the signed message). */
+router.post('/temp-qr', requirePerm('qr.global'), async (req, res) => {
     const { iat, exp } = req.body;
     if (!iat || !exp)
         return res.status(400).json({ error: 'iat and exp required' });
@@ -92,10 +97,21 @@ router.post('/temp-qr', async (req, res) => {
 });
 
 /* POST add new device */
-router.post('/', async (req, res) => {
+router.post('/', requirePerm('device.create'), async (req, res) => {
     const { serial, mqtt_id, name, location } = req.body;
     if (!serial) return res.status(400).json({ error: 'Serial required' });
     try {
+        /* Optional owner (customer). Omitted = unassigned. */
+        let orgId = null;
+        if (req.body.org_id !== undefined && req.body.org_id !== null && req.body.org_id !== '') {
+            orgId = parseInt(req.body.org_id, 10);
+            const orgCheck = Number.isInteger(orgId)
+                ? await pool.query('SELECT id FROM organizations WHERE id = $1', [orgId])
+                : { rows: [] };
+            if (orgCheck.rows.length === 0)
+                return res.status(400).json({ error: 'Customer (org_id) not found' });
+        }
+
         const serialCheck = await pool.query(
             'SELECT id FROM serials WHERE serial = $1',
             [serial]
@@ -104,8 +120,8 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ error: 'Serial not found — generate it first' });
 
         const result = await pool.query(
-            'INSERT INTO devices (serial, mqtt_id, name, location, status, activated) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [serial, mqtt_id || '', name || '', location || '', 'offline', false]
+            'INSERT INTO devices (serial, mqtt_id, name, location, status, activated, org_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            [serial, mqtt_id || '', name || '', location || '', 'offline', false, orgId]
         );
 
         await pool.query(
@@ -113,14 +129,15 @@ router.post('/', async (req, res) => {
             [result.rows[0].id, serial]
         );
 
+        await audit(req, 'device.create', { targetType: 'device', targetId: result.rows[0].id, orgId, details: { serial } });
         res.json(result.rows[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-/* POST activate device manually */
-router.post('/:id/activate', async (req, res) => {
+/* POST activate device manually (platform-only) */
+router.post('/:id/activate', requireDevice('device.activate'), async (req, res) => {
     try {
         const result = await pool.query(
             'UPDATE devices SET activated = TRUE WHERE id = $1 RETURNING *',
@@ -134,8 +151,87 @@ router.post('/:id/activate', async (req, res) => {
     }
 });
 
+/* PATCH assign a device to a customer (platform-only).
+   Body: { org_id: <id> | null }
+
+   - First assignment (device has no owner): allowed. Door users / mobile users
+     that have no customer yet but already use this device are adopted by the
+     customer, so existing data keeps working.
+   - Moving to another customer, or unassigning: refused while anything
+     customer-specific is still attached (credentials, temp PINs, door-user
+     credentials, mobile access, dashboard door restrictions) because those
+     belong to the previous customer. Remove them first. */
+router.patch('/:id/org', requireDevice('device.assign'), async (req, res) => {
+    try {
+        const dev = req.device;
+
+        let newOrg = null;
+        if (req.body.org_id !== undefined && req.body.org_id !== null && req.body.org_id !== '') {
+            newOrg = parseInt(req.body.org_id, 10);
+            const o = Number.isInteger(newOrg)
+                ? await pool.query('SELECT id FROM organizations WHERE id = $1', [newOrg])
+                : { rows: [] };
+            if (o.rows.length === 0)
+                return res.status(400).json({ error: 'Customer (org_id) not found' });
+        }
+
+        if ((dev.org_id ?? null) === newOrg) return res.json(dev);
+
+        if (dev.org_id !== null) {
+            const counts = [];
+            const countOf = async (label, sql) => {
+                try {
+                    const r = await pool.query(sql, [dev.id]);
+                    if (r.rows[0].n > 0) counts.push(`${label}: ${r.rows[0].n}`);
+                } catch (e) { /* table not present on this database */ }
+            };
+            await countOf('credentials',            'SELECT COUNT(*)::int AS n FROM credentials WHERE device_id = $1');
+            await countOf('temp PINs',              'SELECT COUNT(*)::int AS n FROM temp_pins WHERE device_id = $1');
+            await countOf('door-user credentials',  'SELECT COUNT(*)::int AS n FROM user_credentials WHERE device_id = $1');
+            await countOf('mobile access',          'SELECT COUNT(*)::int AS n FROM user_door_access WHERE device_id = $1');
+            await countOf('dashboard door restrictions', 'SELECT COUNT(*)::int AS n FROM dashboard_user_device_access WHERE device_id = $1');
+            if (counts.length > 0)
+                return res.status(409).json({ error: 'Remove the previous customer\'s data from this device first (' + counts.join(', ') + ')' });
+        }
+
+        const result = await pool.query(
+            'UPDATE devices SET org_id = $1 WHERE id = $2 RETURNING *',
+            [newOrg, dev.id]
+        );
+
+        let adopted = { door_users: 0, app_users: 0 };
+        if (dev.org_id === null && newOrg !== null) {
+            try {
+                const a = await pool.query(
+                    `UPDATE door_users SET org_id = $1
+                      WHERE org_id IS NULL
+                        AND id IN (SELECT user_id FROM user_credentials WHERE device_id = $2)`,
+                    [newOrg, dev.id]);
+                const b = await pool.query(
+                    `UPDATE app_users SET org_id = $1
+                      WHERE org_id IS NULL
+                        AND id IN (SELECT user_id FROM user_door_access WHERE device_id = $2)`,
+                    [newOrg, dev.id]);
+                adopted = { door_users: a.rowCount, app_users: b.rowCount };
+            } catch (e) {
+                console.warn('assign: could not adopt existing users:', e.message);
+            }
+        }
+
+        if (req.app.locals.hub) req.app.locals.hub.invalidateDevice(dev.id);
+
+        await audit(req, 'device.assign', {
+            targetType: 'device', targetId: dev.id, orgId: newOrg,
+            details: { from: dev.org_id, to: newOrg, adopted }
+        });
+        res.json({ ...result.rows[0], adopted });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 /* PATCH update device notes */
-router.patch('/:id/notes', async (req, res) => {
+router.patch('/:id/notes', requireDevice('device.configure'), async (req, res) => {
     const { notes } = req.body;
     try {
         const result = await pool.query(
@@ -151,7 +247,7 @@ router.patch('/:id/notes', async (req, res) => {
 });
 
 /* PATCH update relay settings */
-router.patch('/:id/relay', async (req, res) => {
+router.patch('/:id/relay', requireDevice('device.configure'), async (req, res) => {
     const { relay_mode, relay_duration } = req.body;
 
     if (!relay_mode || !['timed', 'latched'].includes(relay_mode))
@@ -177,13 +273,14 @@ router.patch('/:id/relay', async (req, res) => {
 });
 
 /* DELETE device */
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireDevice('device.delete'), async (req, res) => {
     try {
         await pool.query(
             'UPDATE serials SET device_id = NULL, assigned_at = NULL WHERE device_id = $1',
             [req.params.id]
         );
         await pool.query('DELETE FROM devices WHERE id = $1', [req.params.id]);
+        await audit(req, 'device.delete', { targetType: 'device', targetId: req.params.id, orgId: req.device.org_id, details: { serial: req.device.serial } });
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -191,7 +288,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 /* GET device heartbeats */
-router.get('/:id/heartbeats', async (req, res) => {
+router.get('/:id/heartbeats', requireDevice('device.view'), async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT * FROM heartbeats WHERE device_id = $1 ORDER BY created_at DESC LIMIT 1',
@@ -204,7 +301,7 @@ router.get('/:id/heartbeats', async (req, res) => {
 });
 
 /* GET device access logs with filters */
-router.get('/:id/logs', async (req, res) => {
+router.get('/:id/logs', requireDevice('logs.view'), async (req, res) => {
     try {
         const { method, result, from, to } = req.query;
 
@@ -242,7 +339,7 @@ router.get('/:id/logs', async (req, res) => {
 });
 
 /* GET export access logs as CSV */
-router.get('/:id/logs/export', async (req, res) => {
+router.get('/:id/logs/export', requireDevice('logs.export'), async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT al.*, du.name AS user_name
@@ -265,6 +362,21 @@ router.get('/:id/logs/export', async (req, res) => {
     }
 });
 
+/* Which permission each device command needs.
+   Deny-by-default: a command that is not listed needs 'device.ota', which
+   only super_admin holds. */
+const CMD_PERMS = {
+    open:         'device.command',
+    get_logs:     'logs.view',
+    set_schedule: 'device.configure',
+    set_touch:    'device.configure',
+    set_wifi:     'device.configure',
+    apply_wifi:   'device.configure',
+    set_ble_name: 'device.configure',
+    clear_logs:   'device.configure',
+    ota_update:   'device.ota'
+};
+
 /* POST send command to device */
 router.post('/command', async (req, res) => {
     const { serial, cmd, ts, enabled, start, end, name } = req.body;
@@ -278,6 +390,14 @@ router.post('/command', async (req, res) => {
         );
         if (devResult.rows.length === 0)
             return res.status(404).json({ error: 'Device not found' });
+
+        /* 1) the device must belong to the caller (404 hides other customers' devices)
+           2) the caller's role must allow this specific command */
+        const owned = await getAccessibleDevice(req.user, devResult.rows[0].id);
+        if (!owned)
+            return res.status(404).json({ error: 'Device not found' });
+        if (!hasPerm(req.user.role, CMD_PERMS[cmd] || 'device.ota'))
+            return res.status(403).json({ error: 'Forbidden' });
 
         const { id: deviceId, mqtt_id, relay_mode, relay_duration } = devResult.rows[0];
         const mqttId  = mqtt_id || serial;
@@ -346,6 +466,11 @@ router.post('/command', async (req, res) => {
         }
 
         publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
+        /* Never log secrets: only the command name and non-sensitive fields. */
+        await audit(req, 'device.command', {
+            targetType: 'device', targetId: deviceId, orgId: owned.org_id,
+            details: { cmd, serial }
+        });
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
