@@ -327,6 +327,10 @@ RBAC.ready.then(() => {
     const want = location.hash.replace('#', '');
     const allowed = { customers: 'orgs.manage', team: 'users.manage', audit: 'audit.view' };
     showTab(allowed[want] && RBAC.can(allowed[want]) ? want : first);
+    window.addEventListener('hashchange', () => {
+        const h = location.hash.replace('#', '');
+        if (allowed[h] && RBAC.can(allowed[h])) showTab(h);
+    });
 });
 </script>
 </body>

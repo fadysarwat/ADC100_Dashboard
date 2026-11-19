@@ -848,7 +848,7 @@
             const res     = await fetch('/api/devices');
             const devices = await res.json();
             device        = devices.find(d => d.id == deviceId);
-            if (!device) { window.location = '/'; return; }
+            if (!device) { window.location = '/'; return false; }
 
             document.getElementById('devName').textContent        = device.name     || 'Unnamed';
             document.getElementById('devSerial').textContent      = device.serial;
@@ -1360,7 +1360,7 @@ document.getElementById('qrimg').onload = function() {
         /* ── Init ── */
         async function init() {
             await RBAC.ready;
-            await loadDevice();
+            if ((await loadDevice()) === false) return;   /* not yours / not found: stop, we are redirecting */
             await loadHeartbeat();
             if (RBAC.can('logs.view'))        await loadLogs();
             if (RBAC.can('credentials.view')) await loadCredentials();
