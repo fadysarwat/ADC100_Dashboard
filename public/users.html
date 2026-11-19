@@ -292,6 +292,7 @@
         }
         .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
     </style>
+    <script src="/js/rbac.js"></script>
 </head>
 <body>
 
@@ -316,6 +317,12 @@
         <div class="field">
             <label>Full Name</label>
             <input type="text" id="newUserName" placeholder="e.g. Ahmed Hassan" onkeydown="if(event.key==='Enter') addUser()">
+        </div>
+        <div class="field" data-perm="orgs.manage">
+            <label>Customer</label>
+            <select id="newUserOrg" style="padding:9px 12px; background:#0A0E1A; border:1px solid #1e2d4a; border-radius:6px; color:#fff; font-size:14px;">
+                <option value="">— Unassigned —</option>
+            </select>
         </div>
         <button class="btn btn-primary" onclick="addUser()">+ Add User</button>
         <div id="addUserFeedback" class="feedback" style="flex-basis:100%; margin-top:0;"></div>
@@ -350,6 +357,7 @@
 <script>
     let allDevices = [];
     let users      = [];
+    const orgNames = {};
 
     /* ── Load devices (for dropdown) ── */
     async function loadDevices() {
@@ -393,11 +401,11 @@
                 <div class="user-avatar ${avatarClass}">👤</div>
                 <div class="user-info">
                     <div class="user-name">${escHtml(u.name)}</div>
-                    <div class="user-meta">Added ${joined}</div>
+                    <div class="user-meta">Added ${joined}${RBAC.can('orgs.manage') ? ' · ' + (u.org_id ? escHtml(orgNames[u.org_id] || ('Customer #' + u.org_id)) : '<span style="color:#FFB347">Unassigned</span>') : ''}</div>
                 </div>
                 <div class="user-actions" onclick="event.stopPropagation()">
                     <button class="toggle-pill ${pillClass}" onclick="toggleActive(${u.id}, ${!u.active})">${pillLabel}</button>
-                    <button class="btn btn-danger btn-xs" onclick="deleteUser(${u.id}, '${escHtml(u.name)}')">🗑</button>
+                    <button class="btn btn-danger btn-xs" onclick="deleteUser(${Number(u.id)})">🗑</button>
                 </div>
                 <div class="chevron" id="chevron-${u.id}">▼</div>
             </div>
@@ -410,7 +418,7 @@
                     <div class="field">
                         <label>Device</label>
                         <select id="cred-device-${u.id}">
-                            ${allDevices.map(d => `<option value="${d.id}">${escHtml(d.name || d.serial)}</option>`).join('')}
+                            ${allDevices.filter(d => (d.org_id ?? null) === (u.org_id ?? null)).map(d => `<option value="${Number(d.id)}">${escHtml(d.name || d.serial)}</option>`).join('')}
                         </select>
                     </div>
                     <div class="field">
@@ -463,6 +471,7 @@
             return;
         }
 
+        creds.forEach(c => { credCache[c.id] = c; });
         listEl.innerHTML = creds.map(c => renderCredItem(c, userId)).join('');
     }
 
@@ -472,14 +481,14 @@
 
         let qrThumb = '';
         if (c.type === 'qr') {
-            qrThumb = `<div class="cred-qr-thumb" onclick="showQrModal('${escHtml(c.identifier)}', '${escHtml(c.device_name || '')}', '${userId}')">
+            qrThumb = `<div class="cred-qr-thumb" onclick="showQrModal(${Number(c.id)})">
                            <canvas id="qr-thumb-${c.id}" width="30" height="30"></canvas>
                        </div>`;
         }
 
         return `
         <div class="cred-item" id="cred-item-${c.id}">
-            <span class="cred-type-badge ${typeClass}">${c.type.toUpperCase()}</span>
+            <span class="cred-type-badge ${typeClass}">${escHtml(String(c.type).toUpperCase())}</span>
             <div class="cred-info">
                 <div class="cred-identifier">${escHtml(c.identifier)}</div>
                 <div class="cred-device">📍 ${deviceName}</div>
@@ -531,7 +540,7 @@
         const res = await fetch('/api/users', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ name })
+            body:    JSON.stringify({ name, org_id: (document.getElementById('newUserOrg') || {}).value || null })
         });
 
         if (res.ok) {
@@ -575,7 +584,8 @@
     }
 
     /* ── Delete user ── */
-    async function deleteUser(userId, name) {
+    async function deleteUser(userId) {
+        const name = (users.find(u => u.id === userId) || {}).name || '';
         if (!confirm(`Delete user "${name}"? This cannot be undone.`)) return;
         const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' });
         if (res.ok) {
@@ -629,8 +639,12 @@
 
     /* ── QR Modal ── */
     let currentQrContent = null;
+    const credCache = {};
 
-    function showQrModal(identifier, deviceName, userId) {
+    function showQrModal(credId) {
+        const cred       = credCache[credId] || {};
+        const identifier = cred.identifier || '';
+        const deviceName = cred.device_name || '';
         currentQrContent = identifier;
         document.getElementById('qrModalTitle').textContent = 'User QR Code';
         document.getElementById('qrModalSub').textContent   = deviceName ? `Door: ${deviceName}` : 'Scan with mobile app';
@@ -665,7 +679,7 @@
         const w = window.open('', '_blank');
         if (!w) { alert('Allow popups for this site'); return; }
         w.document.write(`<!DOCTYPE html>
-<html><head><title>QR — ${label}</title>
+<html><head><title>QR — ${escHtml(label)}</title>
 <style>
 body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
 .lbl { font-family: monospace; font-size: 13px; font-weight: bold; margin-top: 10px; }
@@ -674,8 +688,8 @@ body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
 </style></head>
 <body>
 <img id="qrimg" src="${dataUrl}" width="200" height="200">
-<div class="lbl">${label}</div>
-<div class="sub">${sub}</div>
+<div class="lbl">${escHtml(label)}</div>
+<div class="sub">${escHtml(sub)}</div>
 <div class="brand">INNOVOLTX — ADC-100</div>
 <script>document.getElementById('qrimg').onload=function(){setTimeout(function(){window.print();window.close();},300);};<\/script>
 </body></html>`);
@@ -689,11 +703,22 @@ body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     /* ── Init ── */
     async function init() {
+        await RBAC.ready;
+        if (RBAC.can('orgs.manage')) {
+            const r = await fetch('/api/orgs');
+            if (r.ok) {
+                const orgs = await r.json();
+                orgs.forEach(o => { orgNames[o.id] = o.name; });
+                document.getElementById('newUserOrg').innerHTML = '<option value="">— Unassigned —</option>' +
+                    orgs.filter(o => o.is_active).map(o => `<option value="${Number(o.id)}">${escHtml(o.name)}</option>`).join('');
+            }
+        }
         await loadDevices();
         await loadUsers();
     }

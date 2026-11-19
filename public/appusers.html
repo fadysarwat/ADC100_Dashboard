@@ -200,6 +200,7 @@
         .err-msg { font-size: 12px; color: #FF4C4C; margin-top: 8px; display: none; }
         .err-msg.show { display: block; }
     </style>
+    <script src="/js/rbac.js"></script>
 </head>
 <body>
 
@@ -287,6 +288,7 @@
 
     <script>
         let allDevices   = [];
+        let usersById    = {};
         let currentUser  = null;
         let currentDoors = [];
 
@@ -299,6 +301,7 @@
         async function loadUsers() {
             const res   = await fetch('/api/appusers');
             const users = await res.json();
+            usersById = {}; users.forEach(u => { usersById[u.id] = u; });
             const body  = document.getElementById('usersBody');
 
             if (users.length === 0) {
@@ -308,10 +311,10 @@
 
             body.innerHTML = users.map(u => `
                 <tr>
-                    <td style="font-weight:bold;">${u.username}</td>
-                    <td style="color:#8A9BB5;">${u.full_name || '—'}</td>
+                    <td style="font-weight:bold;">${esc(u.username)}</td>
+                    <td style="color:#8A9BB5;">${esc(u.full_name || '—')}</td>
                     <td>
-                        <button class="btn btn-secondary btn-sm" onclick="openDoorsModal(${u.id}, '${u.username}')">
+                        <button class="btn btn-secondary btn-sm" onclick="openDoorsModal(${Number(u.id)})">
                             🚪 ${u.door_count} door${u.door_count != 1 ? 's' : ''}
                         </button>
                     </td>
@@ -326,7 +329,7 @@
                                 onclick="toggleUser(${u.id})">
                             ${u.is_active ? '⏸ Disable' : '▶ Enable'}
                         </button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id}, '${u.username}')">Delete</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteUser(${Number(u.id)})">Delete</button>
                     </td>
                 </tr>`).join('');
         }
@@ -362,14 +365,16 @@
             if (res.ok) loadUsers();
         }
 
-        async function deleteUser(id, username) {
+        async function deleteUser(id) {
+            const username = (usersById[id] || {}).username || '';
             if (!confirm(`Delete user "${username}"? This cannot be undone.`)) return;
             const res = await fetch(`/api/appusers/${id}`, { method: 'DELETE' });
             if (res.ok) loadUsers();
         }
 
         /* ── Doors Modal ── */
-        async function openDoorsModal(userId, username) {
+        async function openDoorsModal(userId) {
+            const username = (usersById[userId] || {}).username || '';
             currentUser = userId;
             document.getElementById('modalTitle').textContent = `Door Access — ${username}`;
 
@@ -381,7 +386,7 @@
             /* Populate door select */
             const sel = document.getElementById('doorSelect');
             sel.innerHTML = '<option value="">Select door...</option>' +
-                allDevices.map(d => `<option value="${d.id}">${d.name || 'Unnamed'} — ${d.mqtt_id}</option>`).join('');
+                allDevices.map(d => `<option value="${Number(d.id)}">${esc(d.name || 'Unnamed')} — ${esc(d.mqtt_id)}</option>`).join('');
 
             document.getElementById('doorsModal').classList.add('active');
         }
@@ -395,10 +400,10 @@
             list.innerHTML = currentDoors.map(d => `
                 <div class="door-item">
                     <div class="door-info">
-                        <div>${d.name || 'Unnamed'}</div>
-                        <div class="door-id">${d.mqtt_id} — ${d.location || '—'}</div>
+                        <div>${esc(d.name || 'Unnamed')}</div>
+                        <div class="door-id">${esc(d.mqtt_id)} — ${esc(d.location || '—')}</div>
                     </div>
-                    <button class="btn btn-danger btn-sm" onclick="revokeDoor(${d.id})">Revoke</button>
+                    <button class="btn btn-danger btn-sm" onclick="revokeDoor(${Number(d.id)})">Revoke</button>
                 </div>`).join('');
         }
 
@@ -436,6 +441,7 @@
 
         /* ── Init ── */
         async function init() {
+            await RBAC.ready;
             await loadDevices();
             await loadUsers();
         }

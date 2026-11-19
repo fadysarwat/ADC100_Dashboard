@@ -367,7 +367,10 @@ router.get('/:id/logs/export', requireDevice('logs.export'), async (req, res) =>
    only super_admin holds. */
 const CMD_PERMS = {
     open:         'device.command',
+    get_status:   'device.view',
     get_logs:     'logs.view',
+    restart:      'device.configure',
+    reset_wifi:   'device.configure',
     set_schedule: 'device.configure',
     set_touch:    'device.configure',
     set_wifi:     'device.configure',

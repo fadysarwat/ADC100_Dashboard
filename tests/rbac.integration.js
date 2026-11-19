@@ -216,6 +216,11 @@ const got = (c, type, deviceId) => c.msgs.some(m => m.type === type && m.deviceI
     check('A viewer may request logs -> 200', (await cmd(AV.cookie, 'D1', 'get_logs')).status === 200);
     check('A operator cannot clear logs -> 403', (await cmd(AO.cookie, 'D1', 'clear_logs')).status === 403);
     check('A admin can clear logs -> 200', (await cmd(AA.cookie, 'D1', 'clear_logs')).status === 200);
+    check('A viewer may request status -> 200', (await cmd(AV.cookie, 'D1', 'get_status')).status === 200);
+    check('A operator cannot restart -> 403', (await cmd(AO.cookie, 'D1', 'restart')).status === 403);
+    check('A operator cannot reset wifi -> 403', (await cmd(AO.cookie, 'D1', 'reset_wifi')).status === 403);
+    check('A admin can restart -> 200', (await cmd(AA.cookie, 'D1', 'restart')).status === 200);
+    check('A admin restart on B door -> 404', (await cmd(AA.cookie, 'D3', 'restart')).status === 404);
     check('A admin cannot run OTA -> 403', (await cmd(AA.cookie, 'D1', 'ota_update', { url: 'http://x/fw.bin' })).status === 403);
     check('A admin unknown command -> 403 (deny by default)', (await cmd(AA.cookie, 'D1', 'format_everything')).status === 403);
     published.length = 0;
@@ -423,6 +428,24 @@ const got = (c, type, deviceId) => c.msgs.some(m => m.type === type && m.deviceI
     check('audit never contains secrets (credential, Wi-Fi password, passwords, PIN)',
         !blob.includes('SECRET-PIN-9876') && !blob.includes('wifi-secret-xyz') && !blob.includes('longpassword') && !blob.includes('brandnewpass1'));
     check('audit records who did it', sAudit.body.some(r => r.username === 'a_admin' && r.action === 'credential.add'));
+
+    /* ============ 12. page guards ============ */
+    section('12. HTML page guards');
+    const anon = await call(null, 'GET', '/admin.html');
+    check('anonymous -> admin.html redirects to login', anon.status === 302 && /login/.test(anon.headers.get('location') || ''));
+    const anonStatic = await call(null, 'GET', '/users.html');
+    check('anonymous -> users.html redirects to login', anonStatic.status === 302);
+    const SS = await login('super');
+    check('super opens admin.html', (await call(SS.cookie, 'GET', '/admin.html')).status === 200);
+    const aa = await login('a_admin');
+    check('customer admin opens admin.html', (await call(aa.cookie, 'GET', '/admin.html')).status === 200);
+    check('customer admin may NOT open serials.html (redirect)', (await call(aa.cookie, 'GET', '/serials.html')).status === 302);
+    check('customer admin may NOT open tempqr.html (redirect)', (await call(aa.cookie, 'GET', '/tempqr.html')).status === 302);
+    const vv = await login('a_view');
+    check('viewer opens dashboard', (await call(vv.cookie, 'GET', '/')).status === 200);
+    check('viewer may NOT open admin.html', (await call(vv.cookie, 'GET', '/admin.html')).status === 302);
+    check('viewer may NOT open users.html', (await call(vv.cookie, 'GET', '/users.html')).status === 302);
+    check('login page and shared script are public', (await call(null, 'GET', '/login.html')).status === 200 && (await call(null, 'GET', '/js/rbac.js')).status === 200);
 
     /* ============ summary ============ */
     console.log(`\n${pass} passed, ${fail} failed`);

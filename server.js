@@ -52,30 +52,30 @@ app.use('/api/orgs',            requireAuth, orgsRouter);
 app.use('/api/dashboard-users', requireAuth, dashUsersRouter);
 app.use('/api/audit',           requireAuth, auditRouter);
 
-/* ── Protect HTML pages ── */
-app.get('/', requireAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-app.get('/index.html', requireAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-app.get('/device.html', requireAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'device.html'));
-});
-app.get('/serials.html', requireAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'serials.html'));
-});
-app.get('/tempqr.html', requireAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'tempqr.html'));
-});
-app.get('/temppin.html', requireAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'temppin.html'));
-});
-app.get('/appusers.html', requireAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'appusers.html'));
-});
-app.get('/users.html', requireAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'users.html'));
+/* ── Protect HTML pages ──
+   Every page needs a logged-in user AND the permission that page is for.
+   A logged-in user without the permission is sent back to the dashboard
+   (the page's data is protected by the API anyway; this keeps the UI tidy).
+   Pages not listed here (login.html, js/…) are public static files. */
+const { hasPerm } = require('./src/auth');
+const PAGES = {
+    '/':             { file: 'index.html',    any: ['device.view'] },
+    '/index.html':   { file: 'index.html',    any: ['device.view'] },
+    '/device.html':  { file: 'device.html',   any: ['device.view'] },
+    '/serials.html': { file: 'serials.html',  any: ['serials.manage'] },
+    '/tempqr.html':  { file: 'tempqr.html',   any: ['qr.global'] },
+    '/temppin.html': { file: 'temppin.html',  any: ['temppin.manage'] },
+    '/appusers.html':{ file: 'appusers.html', any: ['appusers.manage'] },
+    '/users.html':   { file: 'users.html',    any: ['doorusers.manage'] },
+    '/admin.html':   { file: 'admin.html',    any: ['orgs.manage', 'users.manage', 'audit.view'] }
+};
+Object.entries(PAGES).forEach(([route, page]) => {
+    app.get(route, requireAuth, (req, res) => {
+        if (!page.any.some(p => hasPerm(req.user.role, p))) {
+            return res.redirect(route === '/' ? '/login.html' : '/');
+        }
+        res.sendFile(path.join(__dirname, 'public', page.file));
+    });
 });
 
 /* ── Public files (login page) ── */

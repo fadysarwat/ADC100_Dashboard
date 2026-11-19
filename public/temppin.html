@@ -189,6 +189,7 @@
         .empty { text-align: center; padding: 40px; color: #8A9BB5; }
         .pin-mono { font-family: monospace; font-size: 20px; font-weight: bold; color: #00C2FF; letter-spacing: 4px; }
     </style>
+    <script src="/js/rbac.js"></script>
 </head>
 <body>
 
@@ -302,7 +303,7 @@
 
             sel.innerHTML = '<option value="">Select device...</option>' +
                 devices.filter(d => d.activated)
-                       .map(d => `<option value="${d.id}" data-name="${d.name || d.serial}">${d.name || 'Unnamed'} — ${d.serial}</option>`)
+                       .map(d => `<option value="${Number(d.id)}" data-name="${esc(d.name || d.serial)}">${esc(d.name || 'Unnamed')} — ${esc(d.serial)}</option>`)
                        .join('');
         }
 
@@ -340,12 +341,12 @@
                 }
 
                 return `<tr>
-                    <td class="pin-mono">${p.pin}</td>
-                    <td>${p.label || '—'}</td>
+                    <td class="pin-mono">${esc(p.pin)}</td>
+                    <td>${esc(p.label || '—')}</td>
                     <td><span class="badge ${badgeClass}">${status}</span></td>
                     <td style="color:#8A9BB5">${iat.toLocaleString()}</td>
                     <td style="color:#8A9BB5">${exp.toLocaleString()}</td>
-                    <td><button class="btn btn-danger btn-sm" onclick="deletePin(${p.id})">Delete</button></td>
+                    <td><button class="btn btn-danger btn-sm" onclick="deletePin(${Number(p.id)})">Delete</button></td>
                 </tr>`;
             }).join('');
         }
@@ -434,7 +435,7 @@
             alert('PIN copied to clipboard!');
         }
 
-        loadDevices();
+        RBAC.ready.then(loadDevices);
         setDefaultDates();
     </script>
 

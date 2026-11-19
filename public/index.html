@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ADC-100 Dashboard</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="/js/rbac.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -259,11 +260,13 @@
         </div>
 
         <div class="navbar-right">
-            <a class="nav-link" href="/serials.html">🔲 Serials</a>
-            <a class="nav-link" href="/tempqr.html">🔐 Temp QR</a>
-            <a class="nav-link" href="/appusers.html">👥 App Users</a>
-            <a class="nav-link" href="/temppin.html">🔑 Temp PIN</a>
-            <a class="nav-link" href="/users.html">🚪 Door Users</a>
+            <a class="nav-link" data-perm="orgs.manage" href="/admin.html#customers">🏢 Customers</a>
+            <a class="nav-link" data-perm-any="users.manage audit.view" href="/admin.html">🛡️ Team &amp; Audit</a>
+            <a class="nav-link" data-perm="serials.manage" href="/serials.html">🔲 Serials</a>
+            <a class="nav-link" data-perm="qr.global" href="/tempqr.html">🔐 Temp QR</a>
+            <a class="nav-link" data-perm="appusers.manage" href="/appusers.html">👥 App Users</a>
+            <a class="nav-link" data-perm="temppin.manage" href="/temppin.html">🔑 Temp PIN</a>
+            <a class="nav-link" data-perm="doorusers.manage" href="/users.html">🚪 Door Users</a>
             <button class="logout-btn" onclick="logout()">Logout</button>
             <button class="nav-link" onclick="openChangePassword()" style="cursor:pointer;">🔒 Password</button>
         </div>
@@ -272,7 +275,7 @@
     <div class="container">
         <div class="topbar">
             <h2>Devices</h2>
-            <button class="btn btn-primary" onclick="openAddModal()">+ Add Device</button>
+            <button class="btn btn-primary" data-perm="device.create" onclick="openAddModal()">+ Add Device</button>
         </div>
 
         <div class="devices-grid" id="devicesGrid">
@@ -309,6 +312,13 @@
                 <div id="qrCode"></div>
                 <div class="qr-serial-text" id="qrSerialText"></div>
                 <div class="qr-logo">INNOVOLTX — ADC-100</div>
+            </div>
+
+            <div class="form-group" data-perm="orgs.manage">
+                <label>Customer (owner of this device)</label>
+                <select id="inputOrg" style="width:100%;padding:10px 12px;background:#0A0E1A;border:1px solid #1e2d4a;border-radius:6px;color:#fff;font-size:14px;">
+                    <option value="">— Unassigned —</option>
+                </select>
             </div>
 
             <div class="form-group">
@@ -350,7 +360,9 @@
         setInterval(updateClocks, 1000);
 
         async function loadDevices() {
+            await RBAC.ready;
             const res  = await fetch('/api/devices');
+            if (res.status === 401) { window.location = '/login.html'; return; }
             const data = await res.json();
 
             if (firstLoad) {
@@ -378,11 +390,9 @@
             const grid = document.getElementById('devicesGrid');
 
             if (devices.length === 0) {
-                grid.innerHTML = `
-                    <div class="empty">
-                        <h3>No devices yet</h3>
-                        <p>Click "Add Device" to register your first ADC-100</p>
-                    </div>`;
+                grid.innerHTML = RBAC.can('device.create')
+                    ? `<div class="empty"><h3>No devices yet</h3><p>Click "Add Device" to register your first ADC-100</p></div>`
+                    : `<div class="empty"><h3>No devices available</h3><p>No devices are assigned to your account. Contact your administrator.</p></div>`;
                 return;
             }
 
@@ -393,28 +403,35 @@
                 const statusText  = d.status === 'online' ? 'ONLINE'
                                   : d.activated           ? 'OFFLINE'
                                   : 'PENDING';
-                const activateBtn = !d.activated
-                    ? `<button class="btn btn-success btn-sm" onclick="activateDevice(${d.id})">Activate</button>`
+                const activateBtn = (!d.activated && RBAC.can('device.activate'))
+                    ? `<button class="btn btn-success btn-sm" onclick="activateDevice(${Number(d.id)})">Activate</button>`
+                    : '';
+                const deleteBtn = RBAC.can('device.delete')
+                    ? `<button class="btn btn-danger btn-sm" onclick="deleteDevice(${Number(d.id)})">Delete</button>`
+                    : '';
+                const ownerLine = (RBAC.can('orgs.manage'))
+                    ? `<div class="device-serial">Customer: ${d.org_name ? esc(d.org_name) : '<span style="color:#FFB347">Unassigned</span>'}</div>`
                     : '';
 
                 return `
                     <div class="device-card ${d.activated ? 'activated' : 'pending'}" id="card-${d.id}">
                         <div class="device-header">
                             <div>
-                                <div class="device-name">${d.name || 'Unnamed Device'}</div>
-                                <div class="device-serial">S/N: ${d.serial}</div>
-                                <div class="device-serial">MQTT: ${d.mqtt_id || '—'}</div>
+                                <div class="device-name">${esc(d.name || 'Unnamed Device')}</div>
+                                <div class="device-serial">S/N: ${esc(d.serial)}</div>
+                                <div class="device-serial">MQTT: ${esc(d.mqtt_id || '—')}</div>
+                                ${ownerLine}
                             </div>
                             <span class="${statusClass}" id="badge-${d.id}">${statusText}</span>
                         </div>
                         <div class="device-info">
-                            <span>📍 ${d.location || '—'}</span>
+                            <span>📍 ${esc(d.location || '—')}</span>
                             <span>📅 Added: ${new Date(d.created_at).toLocaleDateString()}</span>
                         </div>
                         <div class="device-actions">
-                            <button class="btn btn-primary btn-sm" onclick="window.location='device.html?id=${d.id}&serial=${d.serial}'">Details</button>
+                            <button class="btn btn-primary btn-sm" onclick="window.location='device.html?id=${Number(d.id)}&serial=${encodeURIComponent(d.serial)}'">Details</button>
                             ${activateBtn}
-                            <button class="btn btn-danger btn-sm" onclick="deleteDevice(${d.id})">Delete</button>
+                            ${deleteBtn}
                         </div>
                     </div>`;
             }).join('');
@@ -434,7 +451,7 @@
                     badge.textContent = status === 'online' ? 'ONLINE' : 'OFFLINE';
                 }
             };
-            ws.onclose = () => setTimeout(connectWS, 3000);
+            ws.onclose = () => RBAC.afterWsClose(connectWS);
         }
 
         async function generateSerial() {
@@ -459,7 +476,7 @@
                 list.innerHTML = '<div class="serial-list-empty">No unassigned serials</div>';
             } else {
                 list.innerHTML = unassignedSerials.map(s => `
-                    <div class="serial-list-item" onclick="pickSerial('${s.serial}')">
+                    <div class="serial-list-item" onclick="pickSerial('${esc(s.serial)}')">
                         ${s.serial}
                     </div>`).join('');
             }
@@ -508,7 +525,18 @@
             document.getElementById('printArea').style.display = 'none';
         }
 
-        function openAddModal()  { document.getElementById('addModal').classList.add('active'); }
+        async function openAddModal() {
+            document.getElementById('addModal').classList.add('active');
+            if (RBAC.can('orgs.manage')) {
+                const r = await fetch('/api/orgs');
+                if (r.ok) {
+                    const orgs = await r.json();
+                    document.getElementById('inputOrg').innerHTML =
+                        '<option value="">— Unassigned —</option>' +
+                        orgs.filter(o => o.is_active).map(o => `<option value="${Number(o.id)}">${esc(o.name)}</option>`).join('');
+                }
+            }
+        }
         function closeAddModal() {
             document.getElementById('addModal').classList.remove('active');
             document.getElementById('inputSerial').value    = '';
@@ -534,7 +562,7 @@
             const res = await fetch('/api/devices', {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ serial, mqtt_id, name, location })
+                body:    JSON.stringify({ serial, mqtt_id, name, location, org_id: (document.getElementById('inputOrg').value || null) })
             });
 
             if (res.ok) {

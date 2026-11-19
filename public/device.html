@@ -330,6 +330,7 @@
             margin-bottom: 16px;
         }
     </style>
+    <script src="/js/rbac.js"></script>
 </head>
 <body>
 
@@ -352,6 +353,21 @@
                 <div class="location" id="devLocation">—</div>
             </div>
             <span class="badge" id="devStatus">—</span>
+        </div>
+
+        <!-- Customer (owner) — platform admin only -->
+        <div class="card" data-perm="device.assign" style="margin-bottom: 24px;">
+            <h3>Customer</h3>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px;">
+                <select id="assignOrg" style="min-width:220px; padding:9px 12px; background:#0A0E1A; border:1px solid #1e2d4a; border-radius:6px; color:#fff; font-size:14px;">
+                    <option value="">— Unassigned —</option>
+                </select>
+                <button class="btn btn-primary btn-sm" style="width:auto;" onclick="assignOrg()">💾 Assign</button>
+                <span id="assignFeedback" style="font-size:12px;"></span>
+            </div>
+            <div style="font-size:11px; color:#8A9BB5; margin-top:8px;">
+                The customer that owns this device sees it (and only its own devices). Moving a device to another customer is refused while credentials, PINs or users of the previous customer are still attached.
+            </div>
         </div>
 
         <div class="grid-2">
@@ -423,13 +439,14 @@
             <div class="card">
                 <h3>Commands</h3>
                 <div class="cmd-grid">
-                    <button class="btn btn-primary"   onclick="sendOpen()">🔓 Open Door</button>
-                    <button class="btn btn-secondary" onclick="sendRestart()">🔄 Restart</button>
-                    <button class="btn btn-warning"   onclick="sendResetWifi()">📶 Reset WiFi</button>
+                    <button class="btn btn-primary"   data-perm="device.command" onclick="sendOpen()">🔓 Open Door</button>
+                    <button class="btn btn-secondary" data-perm="device.configure" onclick="sendRestart()">🔄 Restart</button>
+                    <button class="btn btn-warning"   data-perm="device.configure" onclick="sendResetWifi()">📶 Reset WiFi</button>
                     <button class="btn btn-secondary" onclick="sendGetStatus()">📡 Get Status</button>
                 </div>
                 <div id="cmdFeedback" class="cmd-feedback"></div>
 
+                <div data-perm="device.configure">
                 <hr class="divider">
 
                 <!-- BLE Name -->
@@ -471,12 +488,13 @@
                     <button class="btn btn-primary btn-sm" style="width:auto;" onclick="sendSetTouch(true)">👆 Enable Touch</button>
                     <button class="btn btn-danger btn-sm"  style="width:auto;" onclick="sendSetTouch(false)">🚫 Disable Touch</button>
                 </div>
+                </div><!-- /device.configure -->
             </div>
 
         </div>
 
         <!-- Relay Settings -->
-        <div class="card" style="margin-bottom: 24px;">
+        <div class="card" data-perm="device.configure" style="margin-bottom: 24px;">
             <div class="card-header">
                 <h3>Relay Settings</h3>
                 <span class="relay-saved" id="relaySaved">✅ Saved</span>
@@ -501,8 +519,8 @@
             </div>
         </div>
 
-        <!-- OTA Update -->
-        <div class="card" style="margin-bottom: 24px;">
+        <!-- OTA Update (platform only) -->
+        <div class="card" data-perm="device.ota" style="margin-bottom: 24px;">
             <div class="card-header">
                 <h3>OTA Firmware Update</h3>
                 <span style="font-size:11px; color:#FF4C4C; font-weight:bold;">⚠️ Device will restart</span>
@@ -518,7 +536,7 @@
         </div>
 
         <!-- Remote WiFi Reconfiguration -->
-        <div class="card" style="margin-bottom: 24px;">
+        <div class="card" data-perm="device.configure" style="margin-bottom: 24px;">
             <div class="card-header">
                 <h3>Remote WiFi Reconfiguration</h3>
                 <span style="font-size:11px; color:#FF9500; font-weight:bold;">⚠️ Device will reconnect</span>
@@ -573,7 +591,7 @@
         </div>
 
         <!-- QR Door ID -->
-        <div class="card" style="margin-bottom: 24px;">
+        <div class="card" data-perm="device.configure" style="margin-bottom: 24px;">
             <div class="card-header">
                 <h3>QR Door ID</h3>
                 <button class="btn btn-secondary btn-sm" onclick="printDoorQR()">🖨️ Print</button>
@@ -593,7 +611,7 @@
         </div>
 
         <!-- Notes -->
-        <div class="card" style="margin-bottom: 24px;">
+        <div class="card" data-perm="device.configure" style="margin-bottom: 24px;">
             <div class="card-header">
                 <h3>Notes</h3>
                 <span class="notes-saved" id="notesSaved">✅ Saved</span>
@@ -603,7 +621,7 @@
         </div>
 
         <!-- Credentials -->
-        <div class="card" style="margin-bottom: 24px;">
+        <div class="card" data-perm="credentials.view" style="margin-bottom: 24px;">
             <h3>Credentials</h3>
             <table class="logs-table">
                 <thead>
@@ -619,7 +637,7 @@
                     <tr><td colspan="5" class="empty-logs">Loading...</td></tr>
                 </tbody>
             </table>
-            <div class="cred-inputs">
+            <div class="cred-inputs" data-perm="credentials.manage">
                 <input type="text" id="credLabel" placeholder="Label (e.g. John Card)">
                 <select id="credType">
                     <option value="rfid">RFID</option>
@@ -635,14 +653,14 @@
         </div>
 
         <!-- Device Logs -->
-        <div class="card" style="margin-bottom: 24px;">
+        <div class="card" data-perm="logs.view" style="margin-bottom: 24px;">
             <div class="card-header">
                 <h3>Device Logs</h3>
                 <span id="devLogsMeta" style="font-size:12px; color:#8A9BB5;"></span>
             </div>
             <div class="dev-logs-btn-row">
                 <button class="btn btn-secondary btn-sm" style="width:auto;" onclick="sendGetLogs()">📋 Get Logs</button>
-                <button class="btn btn-danger btn-sm"    style="width:auto;" onclick="sendClearLogs()">🗑️ Clear Logs</button>
+                <button class="btn btn-danger btn-sm"    data-perm="device.configure" style="width:auto;" onclick="sendClearLogs()">🗑️ Clear Logs</button>
             </div>
             <div id="devLogsFeedback" class="cmd-feedback" style="margin-bottom:10px;"></div>
             <table class="logs-table" id="devLogsTable" style="display:none;">
@@ -661,10 +679,10 @@
         </div>
 
         <!-- Access Logs -->
-        <div class="card">
+        <div class="card" data-perm="logs.view">
             <div class="card-header">
                 <h3>Access Logs</h3>
-                <button class="btn btn-secondary btn-sm" onclick="exportLogs()">⬇️ Export CSV</button>
+                <button class="btn btn-secondary btn-sm" data-perm="logs.export" onclick="exportLogs()">⬇️ Export CSV</button>
             </div>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;">
                 <select id="filterMethod" onchange="loadLogs()" style="padding:7px 10px; background:#0A0E1A; border:1px solid #1e2d4a; border-radius:6px; color:#fff; font-size:12px;">
@@ -729,7 +747,7 @@
                 const el = document.getElementById('wsIndicator');
                 el.textContent = '⬤ Reconnecting...';
                 el.className   = 'ws-indicator';
-                setTimeout(connectWS, 3000);
+                RBAC.afterWsClose(connectWS);
             };
 
             ws.onmessage = (e) => {
@@ -814,13 +832,13 @@
                               ? 'result-temp' : '';
             const time     = new Date(log.created_at).toLocaleString();
             const userCell = log.user_name
-                           ? `<span class="user-badge">👤 ${log.user_name}</span>`
+                           ? `<span class="user-badge">👤 ${esc(log.user_name)}</span>`
                            : '<span style="color:#8A9BB5; font-size:12px;">—</span>';
             const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${time}</td>
-                <td class="${methodClass}">${log.method}</td>
-                <td class="${resultClass}">${log.result}</td>
+                <td class="${methodClass}">${esc(log.method)}</td>
+                <td class="${resultClass}">${esc(log.result)}</td>
                 <td>${userCell}</td>`;
             body.insertBefore(row, body.firstChild);
         }
@@ -880,12 +898,12 @@
                                   ? 'result-temp' : '';
                 const time     = new Date(log.created_at).toLocaleString();
                 const userCell = log.user_name
-                               ? `<span class="user-badge">👤 ${log.user_name}</span>`
+                               ? `<span class="user-badge">👤 ${esc(log.user_name)}</span>`
                                : '<span style="color:#8A9BB5; font-size:12px;">—</span>';
                 return `<tr>
                     <td>${time}</td>
-                    <td class="${methodClass}">${log.method}</td>
-                    <td class="${resultClass}">${log.result}</td>
+                    <td class="${methodClass}">${esc(log.method)}</td>
+                    <td class="${resultClass}">${esc(log.result)}</td>
                     <td>${userCell}</td>
                 </tr>`;
             }).join('');
@@ -930,7 +948,7 @@
             if (!w) { alert('Please allow popups for this site'); return; }
 
             w.document.write(`<!DOCTYPE html>
-<html><head><title>Door QR — ${label}</title>
+<html><head><title>Door QR — ${esc(label)}</title>
 <style>
 body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
 .lbl { font-family: monospace; font-size: 14px; font-weight: bold; margin-top: 10px; }
@@ -938,7 +956,7 @@ body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
 </style></head>
 <body>
 <img id="qrimg" src="${dataUrl}" width="200" height="200">
-<div class="lbl">${label}</div>
+<div class="lbl">${esc(label)}</div>
 <div class="sub">INNOVOLTX — ADC-100</div>
 <script>
 document.getElementById('qrimg').onload = function() {
@@ -1007,11 +1025,11 @@ document.getElementById('qrimg').onload = function() {
 
             body.innerHTML = creds.map(c => `
                 <tr>
-                    <td>${c.label}</td>
-                    <td>${c.cred_type.toUpperCase()}</td>
-                    <td style="font-family:monospace;">${c.cred_data}</td>
+                    <td>${esc(c.label)}</td>
+                    <td>${esc(String(c.cred_type).toUpperCase())}</td>
+                    <td style="font-family:monospace;">${esc(c.cred_data)}</td>
                     <td>${c.is_duress ? '<span style="color:#FFB347">YES</span>' : 'No'}</td>
-                    <td><button class="btn btn-danger btn-sm" onclick="deleteCredential(${c.id})">Delete</button></td>
+                    <td>${RBAC.can('credentials.manage') ? `<button class="btn btn-danger btn-sm" onclick="deleteCredential(${Number(c.id)})">Delete</button>` : '—'}</td>
                 </tr>`).join('');
         }
 
@@ -1276,11 +1294,11 @@ document.getElementById('qrimg').onload = function() {
                 const tag       = e.tag  || '—';
                 const msg       = e.msg  || '';
                 return `<tr>
-                    <td><span class="${badgeCls}">${lvl}</span></td>
+                    <td><span class="${badgeCls}">${esc(lvl)}</span></td>
                     <td style="white-space:nowrap; font-size:12px;">${tsStr}</td>
                     <td style="white-space:nowrap; font-size:12px; color:#8A9BB5;">${upStr}</td>
-                    <td style="font-family:monospace; font-size:12px; color:#00C2FF;">${tag}</td>
-                    <td style="font-size:13px; word-break:break-word; max-width:500px; white-space:pre-wrap;">${msg}</td>
+                    <td style="font-family:monospace; font-size:12px; color:#00C2FF;">${esc(tag)}</td>
+                    <td style="font-size:13px; word-break:break-word; max-width:500px; white-space:pre-wrap;">${esc(msg)}</td>
                 </tr>`;
             }).join('');
 
@@ -1307,13 +1325,47 @@ document.getElementById('qrimg').onload = function() {
             setTimeout(() => { el.className = 'cmd-feedback'; }, 4000);
         }
 
+        /* ── Customer assignment (platform admin) ── */
+        async function loadAssignOrg() {
+            const r = await fetch('/api/orgs');
+            if (!r.ok) return;
+            const orgs = await r.json();
+            const sel  = document.getElementById('assignOrg');
+            sel.innerHTML = '<option value="">— Unassigned —</option>' +
+                orgs.map(o => `<option value="${Number(o.id)}"${o.is_active ? '' : ' disabled'}>${esc(o.name)}${o.is_active ? '' : ' (disabled)'}</option>`).join('');
+            sel.value = device.org_id ? String(device.org_id) : '';
+        }
+
+        async function assignOrg() {
+            const fb  = document.getElementById('assignFeedback');
+            const val = document.getElementById('assignOrg').value;
+            const res = await fetch(`/api/devices/${deviceId}/org`, {
+                method:  'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ org_id: val || null })
+            });
+            const data = await res.json();
+            if (res.ok) {
+                device.org_id = data.org_id;
+                fb.style.color = '#00E5A0';
+                fb.textContent = '✅ Saved' + (data.adopted && (data.adopted.door_users || data.adopted.app_users)
+                    ? ` — ${data.adopted.door_users} door user(s) and ${data.adopted.app_users} app user(s) moved to this customer` : '');
+            } else {
+                fb.style.color = '#FF4C4C';
+                fb.textContent = '❌ ' + (data.error || 'Failed');
+                await loadAssignOrg();
+            }
+        }
+
         /* ── Init ── */
         async function init() {
+            await RBAC.ready;
             await loadDevice();
             await loadHeartbeat();
-            await loadLogs();
-            await loadCredentials();
-            renderDoorQR();
+            if (RBAC.can('logs.view'))        await loadLogs();
+            if (RBAC.can('credentials.view')) await loadCredentials();
+            if (RBAC.can('device.assign'))    await loadAssignOrg();
+            if (RBAC.can('device.configure')) renderDoorQR();
             connectWS();
             setInterval(loadHeartbeat, 10000);
         }

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administration — INNOVOLTX</title>
+    <script src="/js/rbac.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #0A0E1A; color: #E8EEF9; min-height: 100vh; }
+        .navbar { background: #0F1628; border-bottom: 1px solid #1e2d4a; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .navbar .logo { color: #00C2FF; font-size: 12px; letter-spacing: 2px; }
+        .navbar h1 { font-size: 18px; color: #fff; }
+        .navbar-right { display: flex; align-items: center; gap: 12px; }
+        .back-btn, .logout-btn { background: none; border: 1px solid #1e2d4a; color: #8A9BB5; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; }
+        .back-btn:hover { border-color: #00C2FF; color: #00C2FF; }
+        .logout-btn:hover { background: #FF4C4C; color: #fff; border-color: #FF4C4C; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+        .tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid #1e2d4a; }
+        .tab { padding: 10px 18px; background: none; border: none; border-bottom: 2px solid transparent; color: #8A9BB5; cursor: pointer; font-size: 14px; }
+        .tab.active { color: #00C2FF; border-bottom-color: #00C2FF; }
+        .card { background: #0F1628; border: 1px solid #1e2d4a; border-radius: 10px; padding: 18px; margin-bottom: 20px; }
+        .card h3 { font-size: 15px; margin-bottom: 12px; color: #fff; }
+        .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+        .field { display: flex; flex-direction: column; gap: 4px; }
+        .field label { font-size: 11px; color: #8A9BB5; text-transform: uppercase; letter-spacing: 1px; }
+        input, select { padding: 9px 12px; background: #0A0E1A; border: 1px solid #1e2d4a; border-radius: 6px; color: #fff; font-size: 14px; }
+        input:focus, select:focus { outline: none; border-color: #00C2FF; }
+        .btn { padding: 9px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; }
+        .btn-primary { background: #00C2FF; color: #0A0E1A; }
+        .btn-sm { padding: 5px 10px; font-size: 12px; }
+        .btn-secondary { background: #1e2d4a; color: #E8EEF9; }
+        .btn-warning { background: #FFB347; color: #0A0E1A; }
+        .btn-success { background: #00E5A0; color: #0A0E1A; }
+        .btn-danger { background: #FF4C4C; color: #fff; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; color: #8A9BB5; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; padding: 8px; border-bottom: 1px solid #1e2d4a; }
+        td { padding: 9px 8px; border-bottom: 1px solid #14203a; vertical-align: middle; }
+        .badge { padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+        .b-on  { background: rgba(0,229,160,.15); color: #00E5A0; }
+        .b-off { background: rgba(255,76,76,.15); color: #FF4C4C; }
+        .b-role { background: rgba(0,194,255,.12); color: #00C2FF; }
+        .msg { font-size: 12px; margin-top: 8px; min-height: 16px; }
+        .ok { color: #00E5A0; } .err { color: #FF4C4C; }
+        .muted { color: #8A9BB5; }
+        .hint { font-size: 12px; color: #8A9BB5; margin-bottom: 12px; line-height: 1.6; }
+        .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); align-items: center; justify-content: center; z-index: 50; }
+        .modal-bg.open { display: flex; }
+        .modal { background: #0F1628; border: 1px solid #1e2d4a; border-radius: 10px; padding: 22px; width: 460px; max-width: 94vw; max-height: 85vh; overflow: auto; }
+        .modal h3 { margin-bottom: 12px; }
+        .dev-check { display: flex; gap: 8px; align-items: center; padding: 6px 0; font-size: 14px; }
+        pre.det { white-space: pre-wrap; word-break: break-word; font-size: 11px; color: #8A9BB5; max-width: 340px; }
+        .panel { display: none; } .panel.active { display: block; }
+    </style>
+</head>
+<body>
+<div class="navbar">
+    <div style="display:flex; align-items:center; gap:14px;">
+        <button class="back-btn" onclick="window.location='/'">← Back</button>
+        <div><div class="logo">INNOVOLTX</div><h1>Administration</h1></div>
+    </div>
+    <div class="navbar-right">
+        <button class="logout-btn" onclick="window.location='/api/logout'">Logout</button>
+    </div>
+</div>
+
+<div class="container">
+    <div class="tabs">
+        <button class="tab" data-perm="orgs.manage" data-tab="customers">🏢 Customers</button>
+        <button class="tab" data-perm="users.manage" data-tab="team">👥 Team</button>
+        <button class="tab" data-perm="audit.view"  data-tab="audit">📜 Audit log</button>
+    </div>
+
+    <!-- ===================== CUSTOMERS (platform admin) ===================== -->
+    <div class="panel" id="panel-customers">
+        <div class="card">
+            <h3>New customer</h3>
+            <div class="hint">A customer is a company. Everything it owns (devices, door users, app users, dashboard users) is invisible to every other customer.</div>
+            <div class="row">
+                <div class="field"><label>Customer name</label><input id="orgName" placeholder="e.g. Acme Corp" maxlength="120"></div>
+                <button class="btn btn-primary" onclick="createOrg()">+ Create</button>
+            </div>
+            <div class="msg" id="orgMsg"></div>
+        </div>
+        <div class="card">
+            <h3>Customers</h3>
+            <table>
+                <thead><tr><th>Name</th><th>Devices</th><th>Dashboard users</th><th>Status</th><th></th></tr></thead>
+                <tbody id="orgBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ===================== TEAM ===================== -->
+    <div class="panel" id="panel-team">
+        <div class="card">
+            <h3>New dashboard user</h3>
+            <div class="hint">
+                <b>Customer admin</b>: manages the customer's devices, users and sees its audit log ·
+                <b>Operator</b>: opens doors, views logs, creates temporary PINs ·
+                <b>Viewer</b>: read-only status and logs.
+            </div>
+            <div class="row">
+                <div class="field"><label>Username</label><input id="uName" autocomplete="off" maxlength="64"></div>
+                <div class="field"><label>Full name</label><input id="uFull" autocomplete="off" maxlength="120"></div>
+                <div class="field"><label>Password (min 8)</label><input id="uPass" type="password" autocomplete="new-password"></div>
+                <div class="field"><label>Role</label><select id="uRole"></select></div>
+                <div class="field" data-perm="orgs.manage"><label>Customer</label><select id="uOrg"></select></div>
+                <button class="btn btn-primary" onclick="createUser()">+ Create</button>
+            </div>
+            <div class="msg" id="uMsg"></div>
+        </div>
+        <div class="card">
+            <h3>Users</h3>
+            <table>
+                <thead><tr><th>User</th><th>Role</th><th data-perm="orgs.manage">Customer</th><th>Devices</th><th>Status</th><th></th></tr></thead>
+                <tbody id="userBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ===================== AUDIT ===================== -->
+    <div class="panel" id="panel-audit">
+        <div class="card">
+            <h3>Audit log</h3>
+            <div class="hint">Who did what, and when. Passwords, PINs and keys are never recorded.</div>
+            <div class="row" style="margin-bottom:12px;">
+                <div class="field"><label>Action filter</label><input id="auditAction" placeholder="e.g. device.command"></div>
+                <button class="btn btn-secondary" onclick="loadAudit(0)">Apply</button>
+                <button class="btn btn-secondary" onclick="loadAudit(auditOffset - 50)">← Newer</button>
+                <button class="btn btn-secondary" onclick="loadAudit(auditOffset + 50)">Older →</button>
+            </div>
+            <table>
+                <thead><tr><th>Time</th><th>User</th><th data-perm="orgs.manage">Customer</th><th>Action</th><th>Target</th><th>Details</th><th>IP</th></tr></thead>
+                <tbody id="auditBody"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- device restriction modal -->
+<div class="modal-bg" id="devModal">
+    <div class="modal">
+        <h3 id="devModalTitle">Device access</h3>
+        <div class="hint">By default a user sees <b>all</b> of the customer's devices. Restrict to pick only specific doors.</div>
+        <label class="dev-check"><input type="checkbox" id="devRestrict" onchange="toggleRestrict()"> Restrict to selected devices</label>
+        <div id="devList" style="margin:8px 0 14px;"></div>
+        <div class="row">
+            <button class="btn btn-primary" onclick="saveDevices()">Save</button>
+            <button class="btn btn-secondary" onclick="closeDev()">Cancel</button>
+        </div>
+        <div class="msg" id="devMsg"></div>
+    </div>
+</div>
+
+<script>
+const ROLE_NAMES = { super_admin: 'Platform admin', org_admin: 'Customer admin', operator: 'Operator', viewer: 'Viewer' };
+let orgs = [], users = [], auditOffset = 0, devUser = null;
+
+function say(id, text, ok) { const e = document.getElementById(id); e.textContent = text; e.className = 'msg ' + (ok ? 'ok' : 'err'); }
+async function jsonReq(url, method, body) {
+    const r = await RBAC.api(url, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) });
+    return r;
+}
+
+/* ---------- tabs ---------- */
+function showTab(name) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    history.replaceState(null, '', '#' + name);
+    if (name === 'customers') loadOrgs();
+    if (name === 'team')      loadTeam();
+    if (name === 'audit')     loadAudit(0);
+}
+
+/* ---------- customers ---------- */
+async function loadOrgs() {
+    const r = await RBAC.api('/api/orgs', {});
+    if (!r.ok) return;
+    orgs = r.data;
+    document.getElementById('orgBody').innerHTML = orgs.map(o => `
+        <tr>
+            <td><b>${esc(o.name)}</b></td>
+            <td>${Number(o.device_count)}</td>
+            <td>${Number(o.user_count)}</td>
+            <td><span class="badge ${o.is_active ? 'b-on' : 'b-off'}">${o.is_active ? 'ACTIVE' : 'DISABLED'}</span></td>
+            <td style="white-space:nowrap">
+                <button class="btn btn-secondary btn-sm" onclick="renameOrg(${Number(o.id)})">Rename</button>
+                <button class="btn btn-sm ${o.is_active ? 'btn-warning' : 'btn-success'}" onclick="toggleOrg(${Number(o.id)})">${o.is_active ? 'Disable' : 'Enable'}</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteOrg(${Number(o.id)})">Delete</button>
+            </td>
+        </tr>`).join('') || '<tr><td colspan="5" class="muted">No customers yet</td></tr>';
+}
+async function createOrg() {
+    const name = document.getElementById('orgName').value.trim();
+    const r = await jsonReq('/api/orgs', 'POST', { name });
+    if (r.ok) { document.getElementById('orgName').value = ''; say('orgMsg', '✅ Customer created', true); loadOrgs(); }
+    else say('orgMsg', '❌ ' + ((r.data || {}).error || 'Failed'), false);
+}
+async function renameOrg(id) {
+    const o = orgs.find(x => x.id === id); const name = prompt('New name', o ? o.name : '');
+    if (!name) return;
+    const r = await jsonReq('/api/orgs/' + id, 'PATCH', { name });
+    if (r.ok) loadOrgs(); else alert((r.data || {}).error || 'Failed');
+}
+async function toggleOrg(id) {
+    const o = orgs.find(x => x.id === id);
+    if (o.is_active && !confirm('Disable this customer? All its users are logged out immediately and cannot sign in.')) return;
+    const r = await jsonReq('/api/orgs/' + id, 'PATCH', { is_active: !o.is_active });
+    if (r.ok) loadOrgs(); else alert((r.data || {}).error || 'Failed');
+}
+async function deleteOrg(id) {
+    if (!confirm('Delete this customer? Only possible when it has no devices and no users.')) return;
+    const r = await jsonReq('/api/orgs/' + id, 'DELETE');
+    if (r.ok) loadOrgs(); else alert((r.data || {}).error || 'Failed');
+}
+
+/* ---------- team ---------- */
+async function loadTeam() {
+    const roles = RBAC.can('orgs.manage') ? ['org_admin', 'operator', 'viewer', 'super_admin'] : ['org_admin', 'operator', 'viewer'];
+    document.getElementById('uRole').innerHTML = roles.map(r => `<option value="${r}">${esc(ROLE_NAMES[r])}</option>`).join('');
+    if (RBAC.can('orgs.manage')) {
+        const o = await RBAC.api('/api/orgs', {});
+        if (o.ok) { orgs = o.data; document.getElementById('uOrg').innerHTML = orgs.filter(x => x.is_active).map(x => `<option value="${Number(x.id)}">${esc(x.name)}</option>`).join(''); }
+    }
+    const r = await RBAC.api('/api/dashboard-users', {});
+    if (!r.ok) return;
+    users = r.data;
+    const showOrg = RBAC.can('orgs.manage');
+    document.getElementById('userBody').innerHTML = users.map(u => `
+        <tr>
+            <td><b>${esc(u.username)}</b><div class="muted" style="font-size:12px">${esc(u.full_name || '')}</div></td>
+            <td><span class="badge b-role">${esc(ROLE_NAMES[u.role] || u.role)}</span></td>
+            ${showOrg ? `<td>${u.org_name ? esc(u.org_name) : '<span class="muted">Platform</span>'}</td>` : ''}
+            <td>${u.role === 'super_admin' || u.role === 'org_admin' ? '<span class="muted">All</span>' : (u.device_restricted ? '<span style="color:#FFB347">Restricted</span>' : 'All')}</td>
+            <td><span class="badge ${u.is_active ? 'b-on' : 'b-off'}">${u.is_active ? 'ACTIVE' : 'DISABLED'}</span></td>
+            <td style="white-space:nowrap">
+                ${u.role === 'operator' || u.role === 'viewer' ? `<button class="btn btn-secondary btn-sm" onclick="openDev(${Number(u.id)})">Devices</button>` : ''}
+                <button class="btn btn-secondary btn-sm" onclick="resetPw(${Number(u.id)})">Password</button>
+                <button class="btn btn-sm ${u.is_active ? 'btn-warning' : 'btn-success'}" onclick="toggleUser(${Number(u.id)})">${u.is_active ? 'Disable' : 'Enable'}</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteUser(${Number(u.id)})">Delete</button>
+            </td>
+        </tr>`).join('');
+}
+async function createUser() {
+    const body = {
+        username: document.getElementById('uName').value.trim(),
+        full_name: document.getElementById('uFull').value.trim(),
+        password: document.getElementById('uPass').value,
+        role: document.getElementById('uRole').value
+    };
+    if (RBAC.can('orgs.manage') && body.role !== 'super_admin') body.org_id = document.getElementById('uOrg').value;
+    const r = await jsonReq('/api/dashboard-users', 'POST', body);
+    if (r.ok) { ['uName', 'uFull', 'uPass'].forEach(i => document.getElementById(i).value = ''); say('uMsg', '✅ User created', true); loadTeam(); }
+    else say('uMsg', '❌ ' + ((r.data || {}).error || 'Failed'), false);
+}
+async function resetPw(id) {
+    const pw = prompt('New password (min 8 characters). The user will be logged out.');
+    if (!pw) return;
+    const r = await jsonReq('/api/dashboard-users/' + id, 'PATCH', { password: pw });
+    alert(r.ok ? 'Password changed' : ((r.data || {}).error || 'Failed'));
+}
+async function toggleUser(id) {
+    const u = users.find(x => x.id === id);
+    const r = await jsonReq('/api/dashboard-users/' + id, 'PATCH', { is_active: !u.is_active });
+    if (r.ok) loadTeam(); else alert((r.data || {}).error || 'Failed');
+}
+async function deleteUser(id) {
+    const u = users.find(x => x.id === id);
+    if (!confirm('Delete user "' + u.username + '"?')) return;
+    const r = await jsonReq('/api/dashboard-users/' + id, 'DELETE');
+    if (r.ok) loadTeam(); else alert((r.data || {}).error || 'Failed');
+}
+
+/* ---------- per-user device restriction ---------- */
+async function openDev(id) {
+    devUser = id;
+    const u = users.find(x => x.id === id);
+    document.getElementById('devModalTitle').textContent = 'Device access — ' + u.username;
+    const [d, a] = await Promise.all([RBAC.api('/api/devices', {}), RBAC.api('/api/dashboard-users/' + id + '/devices', {})]);
+    if (!d.ok || !a.ok) return;
+    const mine = d.data.filter(x => x.org_id === u.org_id);
+    const sel = new Set(a.data.device_ids);
+    document.getElementById('devRestrict').checked = a.data.restricted;
+    document.getElementById('devList').innerHTML = mine.map(x =>
+        `<label class="dev-check"><input type="checkbox" class="devbox" value="${Number(x.id)}" ${sel.has(x.id) ? 'checked' : ''}> ${esc(x.name || x.serial)} <span class="muted">${esc(x.serial)}</span></label>`
+    ).join('') || '<div class="muted">This customer has no devices yet</div>';
+    toggleRestrict();
+    document.getElementById('devMsg').textContent = '';
+    document.getElementById('devModal').classList.add('open');
+}
+function toggleRestrict() { const on = document.getElementById('devRestrict').checked; document.querySelectorAll('.devbox').forEach(b => b.disabled = !on); }
+function closeDev() { document.getElementById('devModal').classList.remove('open'); }
+async function saveDevices() {
+    const restricted = document.getElementById('devRestrict').checked;
+    const ids = [...document.querySelectorAll('.devbox:checked')].map(b => Number(b.value));
+    const r = await jsonReq('/api/dashboard-users/' + devUser + '/devices', 'PUT', { restricted, device_ids: ids });
+    if (r.ok) { closeDev(); loadTeam(); } else say('devMsg', '❌ ' + ((r.data || {}).error || 'Failed'), false);
+}
+
+/* ---------- audit ---------- */
+async function loadAudit(offset) {
+    auditOffset = Math.max(0, offset);
+    const q = new URLSearchParams({ limit: 50, offset: auditOffset });
+    const a = document.getElementById('auditAction').value.trim();
+    if (a) q.set('action', a);
+    const r = await RBAC.api('/api/audit?' + q, {});
+    if (!r.ok) return;
+    const showOrg = RBAC.can('orgs.manage');
+    document.getElementById('auditBody').innerHTML = r.data.map(e => `
+        <tr>
+            <td style="white-space:nowrap">${esc(new Date(e.created_at).toLocaleString())}</td>
+            <td>${esc(e.username || '—')}</td>
+            ${showOrg ? `<td>${esc(e.org_name || '—')}</td>` : ''}
+            <td><span class="badge b-role">${esc(e.action)}</span></td>
+            <td>${esc(e.target_type || '')} ${esc(e.target_id || '')}</td>
+            <td><pre class="det">${esc(e.details ? JSON.stringify(e.details) : '')}</pre></td>
+            <td class="muted">${esc(e.ip || '')}</td>
+        </tr>`).join('') || '<tr><td colspan="7" class="muted">No entries</td></tr>';
+}
+
+/* ---------- start ---------- */
+RBAC.ready.then(() => {
+    const first = ['customers', 'team', 'audit'].find(t => RBAC.can({ customers: 'orgs.manage', team: 'users.manage', audit: 'audit.view' }[t]));
+    if (!first) { window.location = '/'; return; }
+    document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
+    const want = location.hash.replace('#', '');
+    const allowed = { customers: 'orgs.manage', team: 'users.manage', audit: 'audit.view' };
+    showTab(allowed[want] && RBAC.can(allowed[want]) ? want : first);
+});
+</script>
+</body>
+</html>
