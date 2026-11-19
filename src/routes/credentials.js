@@ -5,13 +5,8 @@ const { publish } = require('../mqtt');
 const crypto  = require('crypto');
 const { requireDevice, hasPerm } = require('../auth');
 const { audit } = require('../audit');
+const { buildCommand } = require('../devicesig');
 require('dotenv').config();
-
-function generateHmac(cmd, ts) {
-    return crypto.createHmac('sha256', process.env.MQTT_SECRET)
-                 .update(`${cmd}:${ts}`)
-                 .digest('hex');
-}
 
 /* Every route below is scoped to ONE device. requireDevice() checks both the
    role permission and that the device belongs to the caller's customer
@@ -51,19 +46,10 @@ router.post('/:deviceId', requireDevice('credentials.manage', 'deviceId'), async
         );
 
         const mqttId = device.mqtt_id || device.serial;
-        const ts     = Math.floor(Date.now() / 1000);
-        const hmac   = generateHmac('add_credential', ts);
-
-        /* Send MQTT command */
-        const payload = {
-            cmd:       'add_credential',
-            ts,
-            hmac,
-            cred_type,
-            cred_data,
-            label,
-            duress:    is_duress ? 'true' : 'false'
-        };
+        /* Send MQTT command (v1 or v2 depending on the device) */
+        const payload = buildCommand(device, 'add_credential', {
+            cred_type, cred_data, label, duress: is_duress ? 'true' : 'false'
+        });
         publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
 
         await audit(req, 'credential.add', {
@@ -96,16 +82,9 @@ router.delete('/:deviceId/:credId', requireDevice('credentials.manage', 'deviceI
         await pool.query('DELETE FROM credentials WHERE id = $1', [cred.id]);
 
         const mqttId = device.mqtt_id || device.serial;
-        const ts     = Math.floor(Date.now() / 1000);
-        const hmac   = generateHmac('delete_credential', ts);
 
         /* Send MQTT command */
-        const payload = {
-            cmd:   'delete_credential',
-            ts,
-            hmac,
-            label: cred.label
-        };
+        const payload = buildCommand(device, 'delete_credential', { label: cred.label });
         publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
 
         await audit(req, 'credential.delete', {

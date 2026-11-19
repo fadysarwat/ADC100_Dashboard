@@ -5,6 +5,7 @@ const { publish } = require('../mqtt');
 const crypto      = require('crypto');
 const { deviceScope, requirePerm, requireDevice, getAccessibleDevice, hasPerm } = require('../auth');
 const { audit }   = require('../audit');
+const { buildCommand, temporaryQr, provisionBundle, buildProvisionCommand } = require('../devicesig');
 require('dotenv').config();
 
 /* Generate unique serial number */
@@ -388,7 +389,7 @@ router.post('/command', async (req, res) => {
 
     try {
         const devResult = await pool.query(
-            'SELECT id, mqtt_id, relay_mode, relay_duration FROM devices WHERE serial = $1',
+            'SELECT id, serial, mqtt_id, relay_mode, relay_duration, key_version FROM devices WHERE serial = $1',
             [serial]
         );
         if (devResult.rows.length === 0)
@@ -404,44 +405,39 @@ router.post('/command', async (req, res) => {
 
         const { id: deviceId, mqtt_id, relay_mode, relay_duration } = devResult.rows[0];
         const mqttId  = mqtt_id || serial;
-        const message = `${cmd}:${ts}`;
-        const hmac    = crypto.createHmac('sha256', process.env.MQTT_SECRET)
-                              .update(message)
-                              .digest('hex');
-
-        const payload = { cmd, ts, hmac };
+        const fields  = {};
 
         if (cmd === 'open') {
-            payload.relay_mode = relay_mode || 'timed';
+            fields.relay_mode = relay_mode || 'timed';
             if ((relay_mode || 'timed') === 'timed') {
-                payload.relay_duration = relay_duration || 5;
+                fields.relay_duration = relay_duration || 5;
             }
         }
 
         if (cmd === 'set_schedule') {
-            payload.enabled = enabled;
-            payload.start   = start;
-            payload.end     = end;
+            fields.enabled = enabled;
+            fields.start   = start;
+            fields.end     = end;
         }
 
         if (cmd === 'set_touch') {
             if (enabled === undefined || enabled === null)
                 return res.status(400).json({ error: 'enabled required for set_touch' });
-            payload.enabled = enabled;
+            fields.enabled = enabled;
         }
 
         if (cmd === 'ota_update') {
             const { url } = req.body;
             if (!url) return res.status(400).json({ error: 'url required for ota_update' });
-            payload.url = url;
+            fields.url = url;
         }
 
         if (cmd === 'set_wifi') {
             const { ssid, password } = req.body;
             if (!ssid || !password)
                 return res.status(400).json({ error: 'ssid and password required for set_wifi' });
-            payload.ssid     = ssid;
-            payload.password = password;
+            fields.ssid     = ssid;
+            fields.pass     = password;   /* the firmware field is "pass" (was "password": never matched) */
         }
 
         if (cmd === 'apply_wifi') {
@@ -460,7 +456,7 @@ router.post('/command', async (req, res) => {
             if (!name) return res.status(400).json({ error: 'name required for set_ble_name' });
             if (!name.startsWith('ADC100-'))
                 return res.status(400).json({ error: 'BLE name must start with ADC100-' });
-            payload.name = name;
+            fields.name = name;
 
             await pool.query(
                 'UPDATE devices SET ble_name = $1 WHERE id = $2',
@@ -468,6 +464,15 @@ router.post('/command', async (req, res) => {
             );
         }
 
+        let payload;
+        try {
+            /* v2 devices: server time + nonce + per-device key; v1: legacy */
+            const dev = devResult.rows[0];
+            payload = buildCommand({ ...dev, mqtt_id: mqttId }, cmd, fields,
+                                   (dev.key_version || 1) >= 2 ? {} : { ts });
+        } catch (e) {
+            return res.status(e.code === 'NO_MASTER_KEY' ? 500 : 400).json({ error: e.message });
+        }
         publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
         /* Never log secrets: only the command name and non-sensitive fields. */
         await audit(req, 'device.command', {
@@ -477,6 +482,83 @@ router.post('/command', async (req, res) => {
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
+    }
+});
+
+/* ============================================================
+   Device security (protocol v2) — see docs/PROTOCOL_V2.md
+   ============================================================ */
+
+/* POST export provisioning data of ONE device (platform admin only).
+   Body (optional): { mqtt_uri, mqtt_user, mqtt_pass } to include in the NVS image.
+   POST, not GET, so broker secrets never travel in a URL. */
+router.post('/:id/provision', requirePerm('device.provision'), async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM devices WHERE id = $1', [parseInt(req.params.id, 10)]);
+        if (!r.rows[0]) return res.status(404).json({ error: 'Device not found' });
+        const bundle = provisionBundle(r.rows[0], {
+            uri: req.body.mqtt_uri, user: req.body.mqtt_user, pass: req.body.mqtt_pass
+        });
+        await audit(req, 'device.provision.export', {
+            targetType: 'device', targetId: r.rows[0].id, orgId: r.rows[0].org_id,
+            details: { serial: r.rows[0].serial }          /* never the key */
+        });
+        res.json(bundle);
+    } catch (err) {
+        res.status(err.code === 'NO_MASTER_KEY' ? 500 : 400).json({ error: err.message });
+    }
+});
+
+/* POST migrate a deployed (v1) device: sends the one-time provision command.
+   The dashboard switches to v2 when the device confirms (see src/mqtt.js). */
+router.post('/:id/migrate', requirePerm('device.provision'), async (req, res) => {
+    try {
+        const r = await pool.query('SELECT * FROM devices WHERE id = $1', [parseInt(req.params.id, 10)]);
+        const dev = r.rows[0];
+        if (!dev) return res.status(404).json({ error: 'Device not found' });
+        if (dev.key_version >= 2) return res.status(409).json({ error: 'Device already uses protocol v2' });
+        publish(`adc100/${dev.mqtt_id || dev.serial}/cmd`, JSON.stringify(buildProvisionCommand(dev)));
+        await audit(req, 'device.migrate', {
+            targetType: 'device', targetId: dev.id, orgId: dev.org_id, details: { serial: dev.serial }
+        });
+        res.json({ success: true, note: 'Command sent. The device switches to v2 once it confirms.' });
+    } catch (err) {
+        res.status(err.code === 'NO_MASTER_KEY' ? 500 : 400).json({ error: err.message });
+    }
+});
+
+/* POST mark a factory-provisioned device as v2 (platform admin) */
+router.post('/:id/mark-v2', requirePerm('device.provision'), async (req, res) => {
+    try {
+        const r = await pool.query('UPDATE devices SET key_version = 2 WHERE id = $1 RETURNING id, org_id, serial',
+                                   [parseInt(req.params.id, 10)]);
+        if (!r.rows[0]) return res.status(404).json({ error: 'Device not found' });
+        await audit(req, 'device.mark_v2', { targetType: 'device', targetId: r.rows[0].id, orgId: r.rows[0].org_id });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/* POST temporary QR for ONE door (v2 devices). Body: { iat, exp } ISO dates. */
+router.post('/:id/temp-qr', requireDevice('temppin.manage', 'id'), async (req, res) => {
+    try {
+        const dev = req.device;
+        if ((dev.key_version || 1) < 2)
+            return res.status(409).json({ error: 'This door has not been upgraded to the secure protocol yet' });
+        const iat = Math.floor(new Date(req.body.iat).getTime() / 1000);
+        const exp = Math.floor(new Date(req.body.exp).getTime() / 1000);
+        if (!Number.isFinite(iat) || !Number.isFinite(exp) || exp <= iat)
+            return res.status(400).json({ error: 'valid iat and exp (exp after iat) required' });
+        if (exp - iat > 7 * 24 * 3600)
+            return res.status(400).json({ error: 'A temporary QR can be valid for at most 7 days' });
+        const qr = temporaryQr(dev, iat, exp);
+        await audit(req, 'device.tempqr', {
+            targetType: 'device', targetId: dev.id, orgId: dev.org_id, details: { iat, exp }
+        });
+        res.json({ qr_text: qr, iat, exp });
+    } catch (err) {
+        res.status(err.code === 'NO_MASTER_KEY' ? 500 : 400).json({ error: err.message });
     }
 });
 

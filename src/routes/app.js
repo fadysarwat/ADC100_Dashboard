@@ -10,6 +10,16 @@ if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
     console.error('FATAL: JWT_SECRET must be set in production.');
     process.exit(1);
 }
+const { bleKey } = require('../devicesig');
+
+/* BLE key handed to the mobile app for one door.
+   v2 doors: a key derived for THAT door only, sent as "hex:<64 hex>" (the app
+   must decode it to 32 bytes). v1 doors: the legacy shared secret (transition). */
+function bleSecretFor(door) {
+    if ((door.key_version || 1) >= 2) return 'hex:' + bleKey(door).toString('hex');
+    return process.env.BLE_SECRET || 'ADC100-DEFAULT-KEY';
+}
+
 const JWT_SECRET  = process.env.JWT_SECRET || 'dev-only-jwt-secret-not-for-production';
 const JWT_EXPIRES = '30d';
 
@@ -41,7 +51,7 @@ router.post('/login', async (req, res) => {
 
         /* 3. Get accessible doors */
         const doorsResult = await pool.query(
-            `SELECT d.id, d.mqtt_id, d.name, d.location, d.ble_name
+            `SELECT d.id, d.serial, d.mqtt_id, d.name, d.location, d.ble_name, d.key_version
              FROM user_door_access uda
              JOIN devices d ON d.id = uda.device_id
              WHERE uda.user_id = $1`,
@@ -52,7 +62,7 @@ router.post('/login', async (req, res) => {
         const keys = {};
         doorsResult.rows.forEach(door => {
             const doorId = door.mqtt_id || String(door.id);
-            keys[doorId] = process.env.BLE_SECRET || 'ADC100-DEFAULT-KEY';
+            keys[doorId] = bleSecretFor(door);
         });
 
         const doors = doorsResult.rows.map(d => ({
@@ -107,7 +117,7 @@ router.get('/keys', async (req, res) => {
             return res.status(401).json({ error: 'Invalid or expired token' });
 
         const doorsResult = await pool.query(
-            `SELECT d.id, d.mqtt_id, d.name, d.location, d.ble_name
+            `SELECT d.id, d.serial, d.mqtt_id, d.name, d.location, d.ble_name, d.key_version
              FROM user_door_access uda
              JOIN devices d ON d.id = uda.device_id
              WHERE uda.user_id = $1`,
@@ -117,7 +127,7 @@ router.get('/keys', async (req, res) => {
         const keys = {};
         doorsResult.rows.forEach(door => {
             const doorId = door.mqtt_id || String(door.id);
-            keys[doorId] = process.env.BLE_SECRET || 'ADC100-DEFAULT-KEY';
+            keys[doorId] = bleSecretFor(door);
         });
 
         const doors = doorsResult.rows.map(d => ({

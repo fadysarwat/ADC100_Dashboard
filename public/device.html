@@ -355,6 +355,48 @@
             <span class="badge" id="devStatus">—</span>
         </div>
 
+        <!-- Temporary QR for this door (customer side, secure protocol v2 doors) -->
+        <div class="card" data-perm="temppin.manage" style="margin-bottom: 24px;">
+            <h3>Temporary QR</h3>
+            <div id="tqrLegacy" style="display:none; font-size:13px; color:#FFB347;">
+                This door has not been upgraded to the secure protocol yet, so a door-specific temporary QR is not available.
+                Ask your administrator to upgrade the door.
+            </div>
+            <div id="tqrForm">
+                <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-top:8px;">
+                    <div><label style="font-size:11px;color:#8A9BB5;">Valid from</label><br><input type="datetime-local" id="tqrFrom" style="padding:8px;background:#0A0E1A;border:1px solid #1e2d4a;border-radius:6px;color:#fff;"></div>
+                    <div><label style="font-size:11px;color:#8A9BB5;">Valid until</label><br><input type="datetime-local" id="tqrTo" style="padding:8px;background:#0A0E1A;border:1px solid #1e2d4a;border-radius:6px;color:#fff;"></div>
+                    <button class="btn btn-primary btn-sm" style="width:auto;" onclick="generateTempQr()">🔐 Generate</button>
+                    <span id="tqrFeedback" style="font-size:12px;"></span>
+                </div>
+                <div id="tqrOut" style="margin-top:14px; display:none;">
+                    <div id="tqrCode" style="background:#fff; padding:10px; display:inline-block; border-radius:6px;"></div>
+                    <div style="font-size:11px;color:#8A9BB5;margin-top:6px;">Works on this door only, for the selected period (max 7 days).</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Device security — platform admin only -->
+        <div class="card" data-perm="device.provision" style="margin-bottom: 24px;">
+            <h3>Security</h3>
+            <div id="secState" style="font-size:13px; margin:8px 0 12px;"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn btn-primary btn-sm" id="btnMigrate" style="width:auto;" onclick="migrateDevice()">⬆ Migrate to v2 (over MQTT)</button>
+                <button class="btn btn-secondary btn-sm" style="width:auto;" onclick="toggleProvision()">📦 Export provisioning</button>
+                <button class="btn btn-secondary btn-sm" id="btnMark" style="width:auto;" onclick="markV2()">✔ Mark as v2</button>
+            </div>
+            <div id="provBox" style="display:none; margin-top:12px; gap:8px; flex-wrap:wrap;">
+                <input id="provUri"  placeholder="mqtts://broker:8883" style="padding:8px;background:#0A0E1A;border:1px solid #1e2d4a;border-radius:6px;color:#fff;min-width:240px;">
+                <input id="provUser" placeholder="broker user" autocomplete="off" style="padding:8px;background:#0A0E1A;border:1px solid #1e2d4a;border-radius:6px;color:#fff;">
+                <input id="provPass" type="password" placeholder="broker password" autocomplete="new-password" style="padding:8px;background:#0A0E1A;border:1px solid #1e2d4a;border-radius:6px;color:#fff;">
+                <button class="btn btn-primary btn-sm" style="width:auto;" onclick="exportProvision()">⬇ Download NVS csv</button>
+            </div>
+            <div id="secFeedback" style="font-size:12px; margin-top:8px;"></div>
+            <div style="font-size:11px; color:#8A9BB5; margin-top:8px;">
+                v2 = per-device key, signatures bound to this door and to every field of the command. The key never appears in the audit log.
+            </div>
+        </div>
+
         <!-- Customer (owner) — platform admin only -->
         <div class="card" data-perm="device.assign" style="margin-bottom: 24px;">
             <h3>Customer</h3>
@@ -1325,6 +1367,70 @@ document.getElementById('qrimg').onload = function() {
             setTimeout(() => { el.className = 'cmd-feedback'; }, 4000);
         }
 
+        /* ── Security (protocol v2) ── */
+        function renderSecurity() {
+            const v2 = (device.key_version || 1) >= 2;
+            const st = document.getElementById('secState');
+            if (st) st.innerHTML = v2 ? '🟢 Protocol <b>v2</b> — per-device key' : '🟠 Protocol <b>v1</b> — legacy shared secret';
+            const bm = document.getElementById('btnMigrate'), bk = document.getElementById('btnMark');
+            if (bm) bm.style.display = v2 ? 'none' : '';
+            if (bk) bk.style.display = v2 ? 'none' : '';
+            const lg = document.getElementById('tqrLegacy'), fm = document.getElementById('tqrForm');
+            if (lg) lg.style.display = v2 ? 'none' : 'block';
+            if (fm) fm.style.display = v2 ? '' : 'none';
+        }
+        function secSay(text, ok) { const e = document.getElementById('secFeedback'); e.style.color = ok ? '#00E5A0' : '#FF4C4C'; e.textContent = text; }
+        function toggleProvision() { const b = document.getElementById('provBox'); b.style.display = b.style.display === 'none' ? 'flex' : 'none'; }
+
+        async function migrateDevice() {
+            if (!confirm('Send the one-time migration command? The device must run the transition firmware and be online.')) return;
+            const r = await fetch(`/api/devices/${deviceId}/migrate`, { method: 'POST' });
+            const d = await r.json();
+            if (!r.ok) { secSay('❌ ' + (d.error || 'Failed'), false); return; }
+            secSay('✅ Command sent — waiting for the device to confirm…', true);
+            let tries = 0;
+            const t = setInterval(async () => {
+                tries++;
+                const res = await fetch('/api/devices'); const list = await res.json();
+                const dv = list.find(x => x.id == deviceId);
+                if (dv && dv.key_version >= 2) { device.key_version = dv.key_version; renderSecurity(); secSay('✅ Device confirmed: now on protocol v2', true); clearInterval(t); }
+                else if (tries >= 15) { secSay('⚠ No confirmation yet. Check the device is online and runs the transition firmware.', false); clearInterval(t); }
+            }, 2000);
+        }
+        async function markV2() {
+            if (!confirm('Only do this after the device was flashed with its provisioning data. Continue?')) return;
+            const r = await fetch(`/api/devices/${deviceId}/mark-v2`, { method: 'POST' });
+            if (r.ok) { device.key_version = 2; renderSecurity(); secSay('✅ Marked as v2', true); }
+            else secSay('❌ Failed', false);
+        }
+        async function exportProvision() {
+            const body = { mqtt_uri: document.getElementById('provUri').value.trim(), mqtt_user: document.getElementById('provUser').value.trim(), mqtt_pass: document.getElementById('provPass').value };
+            const r = await fetch(`/api/devices/${deviceId}/provision`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            const d = await r.json();
+            if (!r.ok) { secSay('❌ ' + (d.error || 'Failed'), false); return; }
+            const blob = new Blob([d.nvs_csv], { type: 'text/csv' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob); a.download = `provision_${d.device_id}.csv`; a.click();
+            URL.revokeObjectURL(a.href);
+            document.getElementById('provPass').value = '';
+            secSay('✅ Downloaded. This file contains the device key: keep it private and delete it after flashing.', true);
+        }
+
+        /* ── Temporary QR (secure doors) ── */
+        async function generateTempQr() {
+            const fb = document.getElementById('tqrFeedback');
+            const from = document.getElementById('tqrFrom').value, to = document.getElementById('tqrTo').value;
+            if (!from || !to) { fb.style.color = '#FF4C4C'; fb.textContent = 'Choose both dates'; return; }
+            const r = await fetch(`/api/devices/${deviceId}/temp-qr`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ iat: new Date(from).toISOString(), exp: new Date(to).toISOString() }) });
+            const d = await r.json();
+            if (!r.ok) { fb.style.color = '#FF4C4C'; fb.textContent = '❌ ' + (d.error || 'Failed'); return; }
+            fb.style.color = '#00E5A0'; fb.textContent = '✅ Created';
+            const box = document.getElementById('tqrCode'); box.innerHTML = '';
+            new QRCode(box, { text: d.qr_text, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+            document.getElementById('tqrOut').style.display = 'block';
+        }
+
         /* ── Customer assignment (platform admin) ── */
         async function loadAssignOrg() {
             const r = await fetch('/api/orgs');
@@ -1365,6 +1471,7 @@ document.getElementById('qrimg').onload = function() {
             if (RBAC.can('logs.view'))        await loadLogs();
             if (RBAC.can('credentials.view')) await loadCredentials();
             if (RBAC.can('device.assign'))    await loadAssignOrg();
+            renderSecurity();
             if (RBAC.can('device.configure')) renderDoorQR();
             connectWS();
             setInterval(loadHeartbeat, 10000);

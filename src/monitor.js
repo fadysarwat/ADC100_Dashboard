@@ -1,13 +1,8 @@
 const pool    = require('./db/pool');
+const { buildCommand } = require('./devicesig');
 const crypto  = require('crypto');
 const { publish } = require('./mqtt');
 require('dotenv').config();
-
-function generateHmac(cmd, ts) {
-    return crypto.createHmac('sha256', process.env.MQTT_SECRET)
-                 .update(`${cmd}:${ts}`)
-                 .digest('hex');
-}
 
 function startMonitor(broadcast) {
     /* Check every 60 seconds */
@@ -38,7 +33,7 @@ function startMonitor(broadcast) {
 
             /* ── Expired temp PINs cleanup ── */
             const expiredPins = await pool.query(
-                `SELECT tp.*, d.mqtt_id, d.serial
+                `SELECT tp.*, d.mqtt_id, d.serial, d.key_version
                  FROM temp_pins tp
                  JOIN devices d ON d.id = tp.device_id
                  WHERE tp.active = TRUE AND tp.exp < NOW()`
@@ -46,16 +41,10 @@ function startMonitor(broadcast) {
 
             for (const pin of expiredPins.rows) {
                 const mqtt_id = pin.mqtt_id || pin.serial;
-                const ts      = Math.floor(Date.now() / 1000);
-                const hmac    = generateHmac('delete_credential', ts);
-
                 /* Send delete to Controller */
-                const payload = {
-                    cmd:   'delete_credential',
-                    ts,
-                    hmac,
-                    label: pin.label
-                };
+                const payload = buildCommand(
+                    { mqtt_id: pin.mqtt_id, serial: pin.serial, key_version: pin.key_version },
+                    'delete_credential', { label: pin.label });
                 publish(`adc100/${mqtt_id}/cmd`, JSON.stringify(payload));
 
                 /* Mark as inactive in DB */

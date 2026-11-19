@@ -179,6 +179,17 @@ function startMqtt(broadcastFn) {
                     return;
                 }
 
+                /* Provisioning ACK: the device stored its per-device key and now
+                   accepts v2 only, so from here on the dashboard signs with v2. */
+                if (payload.event === 'provision') {
+                    console.log(`Provision event from ${mqttId} — result: ${payload.result}`);
+                    if (payload.result === 'OK' || payload.result === 'ALREADY') {
+                        pool.query('UPDATE devices SET key_version = 2 WHERE id = $1', [device.id])
+                            .catch(e => console.error('key_version update failed:', e.message));
+                    }
+                    return;
+                }
+
                 /* Credential events (add/delete ACK) — ignore, no DB insert */
                 if (payload.event === 'credential') {
                     console.log(`Credential event from ${mqttId} — cmd: ${payload.cmd}, label: ${payload.label}, result: ${payload.result}`);
@@ -287,55 +298,18 @@ function publish(topic, message) {
 }
 
 /**
- * sendGetLogs — publishes a signed get_logs command to a device
- * @param {string} mqttId   — the device's MQTT ID (e.g. "Fady_Door_A")
- * @returns {boolean}       — false if MQTT client not ready
+ * sendGetLogs / sendClearLogs — signed commands (v1 or v2 by device.key_version).
+ * @param {{mqtt_id?:string, serial?:string, key_version?:number}} device
  */
-function sendGetLogs(mqttId) {
+function sendSimple(device, cmd) {
     if (!client) return false;
-
-    const crypto = require('crypto');
-    const secret = process.env.MQTT_CMD_SECRET || 'ADC100_MQTT_SECRET_KEY_2024';
-    const ts     = Math.floor(Date.now() / 1000);
-    const cmd    = 'get_logs';
-
-    const hmac = crypto
-        .createHmac('sha256', secret)
-        .update(`${cmd}:${ts}`)
-        .digest('hex');
-
-    const topic   = `adc100/${mqttId}/cmd`;
-    const message = JSON.stringify({ cmd, ts, hmac });
-
-    client.publish(topic, message, { qos: 1 });
-    console.log(`get_logs sent to ${mqttId}`);
+    const { buildCommand } = require('./devicesig');
+    const mqttId = device.mqtt_id || device.serial;
+    client.publish(`adc100/${mqttId}/cmd`, JSON.stringify(buildCommand(device, cmd)), { qos: 1 });
+    console.log(`${cmd} sent to ${mqttId}`);
     return true;
 }
-
-/**
- * sendClearLogs — publishes a signed clear_logs command to a device
- * @param {string} mqttId
- * @returns {boolean}
- */
-function sendClearLogs(mqttId) {
-    if (!client) return false;
-
-    const crypto = require('crypto');
-    const secret = process.env.MQTT_CMD_SECRET || 'ADC100_MQTT_SECRET_KEY_2024';
-    const ts     = Math.floor(Date.now() / 1000);
-    const cmd    = 'clear_logs';
-
-    const hmac = crypto
-        .createHmac('sha256', secret)
-        .update(`${cmd}:${ts}`)
-        .digest('hex');
-
-    const topic   = `adc100/${mqttId}/cmd`;
-    const message = JSON.stringify({ cmd, ts, hmac });
-
-    client.publish(topic, message, { qos: 1 });
-    console.log(`clear_logs sent to ${mqttId}`);
-    return true;
-}
+const sendGetLogs   = (device) => sendSimple(device, 'get_logs');
+const sendClearLogs = (device) => sendSimple(device, 'clear_logs');
 
 module.exports = { startMqtt, publish, sendGetLogs, sendClearLogs };

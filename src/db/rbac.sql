@@ -52,6 +52,9 @@ CREATE INDEX IF NOT EXISTS idx_users_org_id ON users(org_id);
 
 /* ── Devices belong to a customer. NULL = unassigned (platform owner only). ── */
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS org_id INTEGER REFERENCES organizations(id) ON DELETE RESTRICT;
+
+/* Device protocol: 1 = legacy shared secret, 2 = per-device key (docs/PROTOCOL_V2.md) */
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS key_version INTEGER NOT NULL DEFAULT 1;
 CREATE INDEX IF NOT EXISTS idx_devices_org_id ON devices(org_id);
 
 /* ── Per-door restriction for operator/viewer inside an org (used when

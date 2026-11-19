@@ -5,6 +5,7 @@ const { publish } = require('../mqtt');
 const crypto  = require('crypto');
 const { requirePerm, getAccessibleDevice } = require('../auth');
 const { audit } = require('../audit');
+const { buildCommand } = require('../devicesig');
 require('dotenv').config();
 
 /* "Door users" = the people who use the doors (not dashboard logins).
@@ -154,21 +155,12 @@ router.post('/:id/credentials', async (req, res) => {
         );
 
         /* Send MQTT command to device */
-        const ts      = Math.floor(Date.now() / 1000);
-        const message = `add_credential:${ts}`;
-        const hmac    = crypto.createHmac('sha256', process.env.MQTT_SECRET)
-                              .update(message)
-                              .digest('hex');
-
-        const payload = {
-            cmd:       'add_credential',
-            ts,
-            hmac,
+        const payload = buildCommand(device, 'add_credential', {
             cred_type: type,
             cred_data: identifier.trim(),  /* actual PIN/UID/QR value for the device */
             label:     userName,           /* name shown in logs */
             duress:    'false'
-        };
+        });
 
         publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
 
@@ -215,18 +207,7 @@ router.delete('/credentials/:id', async (req, res) => {
         await pool.query('DELETE FROM user_credentials WHERE id = $1', [cred.id]);
 
         /* Send MQTT delete_credential to device */
-        const ts      = Math.floor(Date.now() / 1000);
-        const message = `delete_credential:${ts}`;
-        const hmac    = crypto.createHmac('sha256', process.env.MQTT_SECRET)
-                              .update(message)
-                              .digest('hex');
-
-        const payload = {
-            cmd:   'delete_credential',
-            ts,
-            hmac,
-            label: cred.user_name
-        };
+        const payload = buildCommand(device, 'delete_credential', { label: cred.user_name });
 
         publish(`adc100/${mqttId}/cmd`, JSON.stringify(payload));
 

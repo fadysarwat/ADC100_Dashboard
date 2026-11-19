@@ -32,6 +32,7 @@ process.env.DATABASE_URL     = TEST_URL;
 process.env.NODE_ENV         = 'test';
 process.env.SESSION_SECRET   = 'test-session-secret';
 process.env.MQTT_SECRET      = 'test-mqtt-secret';
+process.env.DEVICE_MASTER_KEY = 'test-master-key-0123456789abcdef-0123456789';
 process.env.WS_REVALIDATE_MS = '400';
 
 const bcrypt    = require('bcrypt');
@@ -446,6 +447,114 @@ const got = (c, type, deviceId) => c.msgs.some(m => m.type === type && m.deviceI
     check('viewer may NOT open admin.html', (await call(vv.cookie, 'GET', '/admin.html')).status === 302);
     check('viewer may NOT open users.html', (await call(vv.cookie, 'GET', '/users.html')).status === 302);
     check('login page and shared script are public', (await call(null, 'GET', '/login.html')).status === 200 && (await call(null, 'GET', '/js/rbac.js')).status === 200);
+
+    /* ============ 13. device security (protocol v2) ============ */
+    section('13. device security: legacy vs per-device keys');
+    const sig = require(path.join(ROOT, 'src/devicesig'));
+    const crypto = require('crypto');
+    const S3 = await login('super'), AA3 = await login('a_admin'), BA3 = await login('b_admin'), AV3 = await login('a_view');
+    const devRow = async id => (await one('SELECT * FROM devices WHERE id = $1', [id]));
+    const lastPub = () => published[published.length - 1];
+    const cmd3 = (c, serial, name, extra = {}) => call(c, 'POST', '/api/devices/command', { serial, cmd: name, ts: Math.floor(Date.now() / 1000), ...extra });
+
+    check('devices start on protocol v1', (await devRow(d1)).key_version === 1);
+
+    published.length = 0;
+    await cmd3(AA3.cookie, 'D1', 'open');
+    const v1p = lastPub().msg;
+    check('v1 device: legacy message (no v/nonce), signature over cmd:ts',
+        v1p.v === undefined && v1p.n === undefined &&
+        v1p.hmac === crypto.createHmac('sha256', 'test-mqtt-secret').update(`open:${v1p.ts}`).digest('hex'));
+
+    check('customer admin cannot mark a device v2 -> 403', (await call(AA3.cookie, 'POST', `/api/devices/${d1}/mark-v2`)).status === 403);
+    check('customer admin cannot export provisioning -> 403', (await call(AA3.cookie, 'POST', `/api/devices/${d1}/provision`, {})).status === 403);
+    check('customer admin cannot migrate -> 403', (await call(AA3.cookie, 'POST', `/api/devices/${d1}/migrate`)).status === 403);
+
+    /* migration of a legacy device */
+    published.length = 0;
+    const mig = await call(S3.cookie, 'POST', `/api/devices/${d3}/migrate`);
+    const migMsg = lastPub() && lastPub().msg;
+    check('super migrates a legacy device -> 200', mig.status === 200);
+    check('migration command: legacy-signed provision_v2 carrying that device key only',
+        migMsg && migMsg.cmd === 'provision_v2' && lastPub().topic === 'adc100/D3/cmd' &&
+        migMsg.dev_key === sig.deviceKey(await devRow(d3)).toString('hex') &&
+        migMsg.hmac === crypto.createHmac('sha256', 'test-mqtt-secret').update(`provision_v2:${migMsg.ts}`).digest('hex'));
+    check('device keys differ per device', sig.deviceKey(await devRow(d1)).toString('hex') !== sig.deviceKey(await devRow(d3)).toString('hex'));
+    check('...and the dashboard does not switch to v2 before the device confirms', (await devRow(d3)).key_version === 1);
+
+    const exp1 = await call(S3.cookie, 'POST', `/api/devices/${d1}/provision`, { mqtt_uri: 'mqtts://b.example:8883', mqtt_user: 'u1', mqtt_pass: 'p1' });
+    const keyHex = sig.deviceKey(await devRow(d1)).toString('hex');
+    check('super exports provisioning (key + NVS csv)', exp1.status === 200 && exp1.body.key_hex === keyHex &&
+        exp1.body.nvs_csv.includes(`dev_key,data,hex2bin,${keyHex}`) && exp1.body.nvs_csv.includes('mqtt_uri,data,string,mqtts://b.example:8883'));
+
+    await call(S3.cookie, 'POST', `/api/devices/${d1}/mark-v2`);
+    check('device D1 is now v2', (await devRow(d1)).key_version === 2);
+    check('mark-v2 again on a v2 device still fine, migrate refuses -> 409', (await call(S3.cookie, 'POST', `/api/devices/${d1}/migrate`)).status === 409);
+
+    /* commands to a v2 device */
+    const verify2 = (m, device, cmdName, fields) => m.v === 2 && /^[0-9a-f]{16}$/.test(m.n) &&
+        m.hmac === crypto.createHmac('sha256', sig.deviceKey(device)).update(sig.v2Message(device.mqtt_id || device.serial, cmdName, m.ts, m.n, fields)).digest('hex');
+    const D1row = await devRow(d1);
+
+    published.length = 0;
+    await cmd3(AA3.cookie, 'D1', 'open');
+    const o2 = lastPub().msg;
+    check('v2 open: per-device signature with relay fields', verify2(o2, D1row, 'open', { relay_mode: o2.relay_mode, relay_duration: o2.relay_duration }));
+    check('v2 open: server time is used (client ts ignored)', Math.abs(o2.ts - Math.floor(Date.now() / 1000)) <= 2);
+
+    published.length = 0;
+    await cmd3(S3.cookie, 'D1', 'ota_update', { url: 'https://example.com/fw.bin' });
+    const ota2 = lastPub().msg;
+    check('v2 ota_update: the URL is covered by the signature', verify2(ota2, D1row, 'ota_update', { url: 'https://example.com/fw.bin' }) &&
+        !verify2({ ...ota2, hmac: ota2.hmac }, D1row, 'ota_update', { url: 'https://evil.example/fw.bin' }));
+
+    published.length = 0;
+    await cmd3(AA3.cookie, 'D1', 'set_wifi', { ssid: 'Net', password: 'secretpass' });
+    const w2 = lastPub().msg;
+    check('v2 set_wifi uses the firmware field "pass"', w2.pass === 'secretpass' && verify2(w2, D1row, 'set_wifi', { ssid: 'Net', pass: 'secretpass' }));
+
+    published.length = 0;
+    await call(AA3.cookie, 'POST', `/api/credentials/${d1}`, { label: 'k2', cred_type: 'pin', cred_data: '4321' });
+    const c2 = lastPub().msg;
+    check('v2 add_credential: data fields signed', verify2(c2, D1row, 'add_credential', { cred_type: 'pin', cred_data: '4321', label: 'k2', duress: 'false' }));
+
+    published.length = 0;
+    await cmd3(AA3.cookie, 'D1', 'get_logs');
+    const n1 = lastPub().msg.n;
+    await cmd3(AA3.cookie, 'D1', 'get_logs');
+    check('every v2 command carries a fresh nonce', lastPub().msg.n !== n1);
+
+    check('another customer still gets 404 for the v2 door', (await cmd3(BA3.cookie, 'D1', 'open')).status === 404);
+
+    /* temporary QR per door */
+    const now = Date.now();
+    const qrBody = { iat: new Date(now).toISOString(), exp: new Date(now + 3600e3).toISOString() };
+    const qr = await call(AA3.cookie, 'POST', `/api/devices/${d1}/temp-qr`, qrBody);
+    const qrObj = qr.body && qr.body.qr_text ? JSON.parse(qr.body.qr_text) : {};
+    check('customer admin creates a temporary QR for their v2 door', qr.status === 200 && qrObj.v === 2 && qrObj.did === 'D1');
+    check('QR text starts with the prefix the firmware looks for', qr.body.qr_text.startsWith('{"v":2,'));
+    check('QR signature = HMAC(device key) over the door id', qrObj.hmac === crypto.createHmac('sha256', sig.deviceKey(D1row)).update(`v2tqr\nD1\n${qrObj.iat}\n${qrObj.exp}`).digest('hex'));
+    check('QR for a legacy door is refused -> 409', (await call(AA3.cookie, 'POST', `/api/devices/${d2}/temp-qr`, qrBody)).status === 409);
+    check('QR for another customer door -> 404', (await call(AA3.cookie, 'POST', `/api/devices/${d3}/temp-qr`, qrBody)).status === 404);
+    check('other customer cannot make a QR for D1 -> 404', (await call(BA3.cookie, 'POST', `/api/devices/${d1}/temp-qr`, qrBody)).status === 404);
+    check('viewer cannot make a QR -> 403', (await call(AV3.cookie, 'POST', `/api/devices/${d1}/temp-qr`, qrBody)).status === 403);
+    check('QR longer than 7 days refused -> 400', (await call(AA3.cookie, 'POST', `/api/devices/${d1}/temp-qr`, { iat: qrBody.iat, exp: new Date(now + 8 * 86400e3).toISOString() })).status === 400);
+    check('QR with exp before iat refused -> 400', (await call(AA3.cookie, 'POST', `/api/devices/${d1}/temp-qr`, { iat: qrBody.exp, exp: qrBody.iat })).status === 400);
+
+    /* BLE keys handed to the mobile app */
+    await q('INSERT INTO user_door_access(user_id,device_id) VALUES($1,$2) ON CONFLICT DO NOTHING', [auA, d1]);
+    const appLogin = await fetch(base + '/api/app/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: 'app_a', password: 'pw123456' }) });
+    const appBody = await appLogin.json();
+    check('v2 door: the app receives a key derived for that door only',
+        appBody.keys && appBody.keys.D1 === 'hex:' + sig.bleKey(D1row).toString('hex'));
+    check('BLE key differs from the device key', appBody.keys.D1 !== 'hex:' + sig.deviceKey(D1row).toString('hex'));
+
+    /* audit: provisioning actions are recorded, the key never is */
+    const aud3 = await call(S3.cookie, 'GET', '/api/audit?limit=200');
+    const acts3 = new Set(aud3.body.map(r => r.action));
+    check('audit records migrate / provisioning export / mark_v2 / temp QR',
+        ['device.migrate', 'device.provision.export', 'device.mark_v2', 'device.tempqr'].every(a => acts3.has(a)));
+    check('audit never contains device keys', !JSON.stringify(aud3.body).includes(keyHex));
 
     /* ============ summary ============ */
     console.log(`\n${pass} passed, ${fail} failed`);

@@ -1,0 +1,171 @@
+{
+  "device_id": "Fady_Door_A",
+  "device_key_hex": "d8b49758b9c38a2e3000e7633ffd586983ba744f3d738e75665aa7bd15059a10",
+  "ble_key_hex": "6e769e594a2f0888e27f609aee5ece041efaf8777856732bd6937e4e8ba9f1c5",
+  "qr_ok": "{\"v\":2,\"did\":\"Fady_Door_A\",\"iat\":1760000000,\"exp\":1760003600,\"hmac\":\"8ce056cbb927875e71214834b6b51aea3a7de2569e3dce6deaab105e7b4b4afd\"}",
+  "qr_other_door": "{\"v\":2,\"did\":\"Other_Door\",\"iat\":1760000000,\"exp\":1760003600,\"hmac\":\"f2f6a55b7e3cfb3da176be94acd55d1e4961387f7040f30dfb057fcaef61d7c2\"}",
+  "cases": [
+    {
+      "name": "open timed",
+      "device_id": "Fady_Door_A",
+      "cmd": "open",
+      "ts": 1760000000,
+      "hmac": "72decf78f6e33ddbc8ccced4f4453ae1e9cc1e939ce30494d634d41e8b417f73",
+      "json": "{\"cmd\":\"open\",\"relay_mode\":\"timed\",\"relay_duration\":5,\"ts\":1760000000,\"v\":2,\"n\":\"0000000000000001\",\"hmac\":\"72decf78f6e33ddbc8ccced4f4453ae1e9cc1e939ce30494d634d41e8b417f73\"}",
+      "expect": true
+    },
+    {
+      "name": "open latched",
+      "device_id": "Fady_Door_A",
+      "cmd": "open",
+      "ts": 1760000000,
+      "hmac": "cc52aab8ce84a4c5a478ca451cd61db4712f9328303ae40034f94f2af2bbb9ec",
+      "json": "{\"cmd\":\"open\",\"relay_mode\":\"latched\",\"ts\":1760000000,\"v\":2,\"n\":\"0000000000000002\",\"hmac\":\"cc52aab8ce84a4c5a478ca451cd61db4712f9328303ae40034f94f2af2bbb9ec\"}",
+      "expect": true
+    },
+    {
+      "name": "get_logs",
+      "device_id": "Fady_Door_A",
+      "cmd": "get_logs",
+      "ts": 1760000000,
+      "hmac": "7c9c4ea541c445300b6abb1a672852f756ae01832f8c855db871ea7a515d03fc",
+      "json": "{\"cmd\":\"get_logs\",\"ts\":1760000000,\"v\":2,\"n\":\"0000000000000003\",\"hmac\":\"7c9c4ea541c445300b6abb1a672852f756ae01832f8c855db871ea7a515d03fc\"}",
+      "expect": true
+    },
+    {
+      "name": "restart",
+      "device_id": "Fady_Door_A",
+      "cmd": "restart",
+      "ts": 1760000000,
+      "hmac": "ae0a12825a205e142fb2d85a438e3f7dcc9a0010022db61cc323e3e982f0bff9",
+      "json": "{\"cmd\":\"restart\",\"ts\":1760000000,\"v\":2,\"n\":\"0000000000000004\",\"hmac\":\"ae0a12825a205e142fb2d85a438e3f7dcc9a0010022db61cc323e3e982f0bff9\"}",
+      "expect": true
+    },
+    {
+      "name": "add rfid",
+      "device_id": "Fady_Door_A",
+      "cmd": "add_credential",
+      "ts": 1760000000,
+      "hmac": "fd720579a68bd18a6b47d9b54e5ac4bd0461655c22376deb96628625f77a7413",
+      "json": "{\"cmd\":\"add_credential\",\"cred_type\":\"rfid\",\"cred_data\":\"AABBCCDD\",\"label\":\"Card 1\",\"duress\":\"false\",\"ts\":1760000000,\"v\":2,\"n\":\"0000000000000005\",\"hmac\":\"fd720579a68bd18a6b47d9b54e5ac4bd0461655c22376deb96628625f77a7413\"}",
+      "expect": true
+    },
+    {
+      "name": "add pin with tricky label",
+      "device_id": "Fady_Door_A",
+      "cmd": "add_credential",
+      "ts": 1760000000,
+      "hmac": "1cc3f65c20f2739ff8d963961ce18ae025423bcea94da39fbc3705a8f8ed80df",
+      "json": "{\"cmd\":\"add_credential\",\"cred_type\":\"pin\",\"cred_data\":\"1234\",\"label\":\"Zoë \\\"Z\\\" | a\\\\b\\nc\",\"duress\":\"false\",\"ts\":1760000000,\"v\":2,\"n\":\"0000000000000006\",\"hmac\":\"1cc3f65c20f2739ff8d963961ce18ae025423bcea94da39fbc3705a8f8ed80df\"}",
+      "expect": true
+    },
+    {
+      "name": "delete credential",
+      "device_id": "Fady_Door_A",
+      "cmd": "delete_credential",
+      "ts": 1760000000,
+      "hmac": "18cd10cf7be18e9ca7cfa104d8f77e862da9d4f215d59ab53533a2dcfd40cfec",
+      "json": "{\"cmd\":\"delete_credential\",\"label\":\"Card 1\",\"ts\":1760000000,\"v\":2,\"n\":\"0000000000000007\",\"hmac\":\"18cd10cf7be18e9ca7cfa104d8f77e862da9d4f215d59ab53533a2dcfd40cfec\"}",
+      "expect": true
+    },
+    {
+      "name": "set_schedule",
+      "device_id": "Fady_Door_A",
+      "cmd": "set_schedule",
+      "ts": 1760000000,
+      "hmac": "a85f92474b09c2cbe288f1ae766f1f12586b23faa94fe2c7cacc4c5dd5d6197f",
+      "json": "{\"cmd\":\"set_schedule\",\"enabled\":\"true\",\"start\":\"08:00\",\"end\":\"17:30\",\"ts\":1760000000,\"v\":2,\"n\":\"0000000000000008\",\"hmac\":\"a85f92474b09c2cbe288f1ae766f1f12586b23faa94fe2c7cacc4c5dd5d6197f\"}",
+      "expect": true
+    },
+    {
+      "name": "set_wifi",
+      "device_id": "Fady_Door_A",
+      "cmd": "set_wifi",
+      "ts": 1760000000,
+      "hmac": "cf3f3fd9929e1cb83e128cc37b0da71c2df8a6279c30e27a592a6c597f69e347",
+      "json": "{\"cmd\":\"set_wifi\",\"ssid\":\"My \\\"Net\\\"\",\"pass\":\"p@ss|word\\\\1\",\"ts\":1760000000,\"v\":2,\"n\":\"0000000000000009\",\"hmac\":\"cf3f3fd9929e1cb83e128cc37b0da71c2df8a6279c30e27a592a6c597f69e347\"}",
+      "expect": true
+    },
+    {
+      "name": "ota_update",
+      "device_id": "Fady_Door_A",
+      "cmd": "ota_update",
+      "ts": 1760000000,
+      "hmac": "0b13c79265d9a66210742bc4e0ecd3738aa28198103f8cf65b0d7ca57c390384",
+      "json": "{\"cmd\":\"ota_update\",\"url\":\"https://example.com/fw/adc100.bin\",\"ts\":1760000000,\"v\":2,\"n\":\"000000000000000a\",\"hmac\":\"0b13c79265d9a66210742bc4e0ecd3738aa28198103f8cf65b0d7ca57c390384\"}",
+      "expect": true
+    },
+    {
+      "name": "set_ble_name",
+      "device_id": "Fady_Door_A",
+      "cmd": "set_ble_name",
+      "ts": 1760000000,
+      "hmac": "1ef427aaed21918f37948758d7c8735a0d5e46af52b49a9c019d4d31b9ab15a9",
+      "json": "{\"cmd\":\"set_ble_name\",\"name\":\"ADC100-LOBBY\",\"ts\":1760000000,\"v\":2,\"n\":\"000000000000000b\",\"hmac\":\"1ef427aaed21918f37948758d7c8735a0d5e46af52b49a9c019d4d31b9ab15a9\"}",
+      "expect": true
+    },
+    {
+      "name": "ATTACK: ota url swapped after signing",
+      "device_id": "Fady_Door_A",
+      "cmd": "ota_update",
+      "ts": 1760000000,
+      "hmac": "5004959c04227d949b675b01d8599c5f57f0773d2fcbd4cec78cd650dbf2dfe0",
+      "json": "{\"cmd\":\"ota_update\",\"url\":\"https://evil.example/fw/adc100.bin\",\"ts\":1760000000,\"v\":2,\"n\":\"000000000000000c\",\"hmac\":\"5004959c04227d949b675b01d8599c5f57f0773d2fcbd4cec78cd650dbf2dfe0\"}",
+      "expect": false
+    },
+    {
+      "name": "ATTACK: relay_duration changed",
+      "device_id": "Fady_Door_A",
+      "cmd": "open",
+      "ts": 1760000000,
+      "hmac": "1948c8e0bf0c3a0d40dd04d4ab7075cd7ae5ce005c38a81d797425988d284dd6",
+      "json": "{\"cmd\":\"open\",\"relay_mode\":\"timed\",\"relay_duration\":300,\"ts\":1760000000,\"v\":2,\"n\":\"000000000000000d\",\"hmac\":\"1948c8e0bf0c3a0d40dd04d4ab7075cd7ae5ce005c38a81d797425988d284dd6\"}",
+      "expect": false
+    },
+    {
+      "name": "ATTACK: credential data changed",
+      "device_id": "Fady_Door_A",
+      "cmd": "add_credential",
+      "ts": 1760000000,
+      "hmac": "54429dff3bff0f79a99c92da0593a97d060566849d49241d150e133d3c9a5c62",
+      "json": "{\"cmd\":\"add_credential\",\"cred_type\":\"pin\",\"cred_data\":\"9999\",\"label\":\"x\",\"duress\":\"false\",\"ts\":1760000000,\"v\":2,\"n\":\"000000000000000e\",\"hmac\":\"54429dff3bff0f79a99c92da0593a97d060566849d49241d150e133d3c9a5c62\"}",
+      "expect": false
+    },
+    {
+      "name": "ATTACK: signed for another door",
+      "device_id": "Fady_Door_A",
+      "cmd": "open",
+      "ts": 1760000000,
+      "hmac": "3fd6fed321c38986f0b59876dd34e9be34c498a31948bb8779080600625362de",
+      "json": "{\"cmd\":\"open\",\"relay_mode\":\"timed\",\"relay_duration\":5,\"ts\":1760000000,\"v\":2,\"n\":\"000000000000000f\",\"hmac\":\"3fd6fed321c38986f0b59876dd34e9be34c498a31948bb8779080600625362de\"}",
+      "expect": false
+    },
+    {
+      "name": "ATTACK: v1-style signature (cmd:ts)",
+      "device_id": "Fady_Door_A",
+      "cmd": "open",
+      "ts": 1760000000,
+      "hmac": "a90bcd9cb1c46fdb7895f9181e30fc61012fe9564cdb4de186f5c769d4a5b164",
+      "json": "{\"cmd\":\"open\",\"relay_mode\":\"timed\",\"relay_duration\":5,\"ts\":1760000000,\"v\":2,\"n\":\"0000000000000010\",\"hmac\":\"9460c7e1e957bf9fbf5f64797cac1059fa7b332befa91ac3856ab0e4a6269e67\"}",
+      "expect": false
+    },
+    {
+      "name": "ATTACK: nonce changed",
+      "device_id": "Fady_Door_A",
+      "cmd": "get_logs",
+      "ts": 1760000000,
+      "hmac": "c1e2af3a33b0c61f555fa2348bdf2d6cd8364907bf8190297acc97eac2ddc664",
+      "json": "{\"cmd\":\"get_logs\",\"ts\":1760000000,\"v\":2,\"n\":\"ffffffffffffffff\",\"hmac\":\"c1e2af3a33b0c61f555fa2348bdf2d6cd8364907bf8190297acc97eac2ddc664\"}",
+      "expect": false
+    },
+    {
+      "name": "ATTACK: missing field becomes empty",
+      "device_id": "Fady_Door_A",
+      "cmd": "delete_credential",
+      "ts": 1760000000,
+      "hmac": "29e06d5c0e845a93a750a4e3057abad2330ca5d8b20f5e2be691d868777cc1ef",
+      "json": "{\"cmd\":\"delete_credential\",\"ts\":1760000000,\"v\":2,\"n\":\"0000000000000012\",\"hmac\":\"29e06d5c0e845a93a750a4e3057abad2330ca5d8b20f5e2be691d868777cc1ef\"}",
+      "expect": false
+    }
+  ]
+}

@@ -5,13 +5,8 @@ const { publish } = require('../mqtt');
 const crypto      = require('crypto');
 const { requireDevice } = require('../auth');
 const { audit }   = require('../audit');
+const { buildCommand } = require('../devicesig');
 require('dotenv').config();
-
-function generateHmac(cmd, ts) {
-    return crypto.createHmac('sha256', process.env.MQTT_SECRET)
-                 .update(`${cmd}:${ts}`)
-                 .digest('hex');
-}
 
 function generatePin() {
     return String(Math.floor(1000 + Math.random() * 9000));
@@ -52,19 +47,11 @@ router.post('/:deviceId', requireDevice('temppin.manage', 'deviceId'), async (re
         );
 
         /* Send add_credential to Controller via MQTT */
-        const ts      = Math.floor(Date.now() / 1000);
-        const hmac    = generateHmac('add_credential', ts);
         const mqtt_id = device.mqtt_id || device.serial;
 
-        const payload = {
-            cmd:       'add_credential',
-            ts,
-            hmac,
-            cred_type: 'pin',
-            cred_data: finalPin,
-            label:     pinLabel,
-            duress:    'false'
-        };
+        const payload = buildCommand(device, 'add_credential', {
+            cred_type: 'pin', cred_data: finalPin, label: pinLabel, duress: 'false'
+        });
         publish(`adc100/${mqtt_id}/cmd`, JSON.stringify(payload));
 
         await audit(req, 'temppin.add', {
@@ -98,15 +85,7 @@ router.delete('/:deviceId/:pinId', requireDevice('temppin.manage', 'deviceId'), 
         await pool.query('DELETE FROM temp_pins WHERE id = $1', [pin.id]);
 
         /* Send delete_credential to Controller */
-        const ts   = Math.floor(Date.now() / 1000);
-        const hmac = generateHmac('delete_credential', ts);
-
-        const payload = {
-            cmd:   'delete_credential',
-            ts,
-            hmac,
-            label: pin.label
-        };
+        const payload = buildCommand(device, 'delete_credential', { label: pin.label });
         publish(`adc100/${mqtt_id}/cmd`, JSON.stringify(payload));
 
         await audit(req, 'temppin.delete', {
