@@ -2,8 +2,8 @@
   "device_id": "Fady_Door_A",
   "device_key_hex": "d8b49758b9c38a2e3000e7633ffd586983ba744f3d738e75665aa7bd15059a10",
   "ble_key_hex": "6e769e594a2f0888e27f609aee5ece041efaf8777856732bd6937e4e8ba9f1c5",
-  "qr_ok": "{\"v\":2,\"did\":\"Fady_Door_A\",\"iat\":1760000000,\"exp\":1760003600,\"hmac\":\"8ce056cbb927875e71214834b6b51aea3a7de2569e3dce6deaab105e7b4b4afd\"}",
-  "qr_other_door": "{\"v\":2,\"did\":\"Other_Door\",\"iat\":1760000000,\"exp\":1760003600,\"hmac\":\"f2f6a55b7e3cfb3da176be94acd55d1e4961387f7040f30dfb057fcaef61d7c2\"}",
+  "qr_ok": "{\"v\":2,\"iat\":1760000000,\"exp\":1760003600,\"hmac\":\"8ce056cbb927875e71214834b6b51aea\"}",
+  "qr_other_door": "{\"v\":2,\"iat\":1760000000,\"exp\":1760003600,\"hmac\":\"f2f6a55b7e3cfb3da176be94acd55d1e\"}",
   "cases": [
     {
       "name": "open timed",

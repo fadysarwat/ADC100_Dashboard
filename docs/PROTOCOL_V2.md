@@ -73,18 +73,23 @@ An unknown `cmd` is rejected.
 
 ## Temporary QR v2
 
-QR content (compact JSON, this exact key order):
+QR content (compact JSON, this exact key order, about 85 bytes):
 
 ```json
-{"v":2,"did":"<device_id>","iat":1760000000,"exp":1760003600,"hmac":"<64 hex>"}
+{"v":2,"iat":1760000000,"exp":1760003600,"hmac":"<32 hex>"}
 ```
 ```
-MSG  = "v2tqr\n" + did + "\n" + iat + "\n" + exp
-hmac = HMAC-SHA256(device_key, MSG)
+MSG  = "v2tqr\n" + device_id + "\n" + iat + "\n" + exp
+hmac = first 32 hex chars (128 bit) of HMAC-SHA256(device_key, MSG)
 ```
 
-The device rejects it unless `did` equals its own id, the time window is valid
-and the HMAC matches. The firmware recognises it by the prefix `{"v":2,`.
+The door id is **not** in the QR. Each door computes MSG with its own id, so a QR issued
+for another door fails the check. The device rejects the QR unless the time window is
+valid and the HMAC matches. The firmware recognises it by the prefix `{"v":2,`.
+
+Size limit: the reader sends the controller at most 112 bytes per frame
+(`RS485_DATA_MAX`), so the QR must stay below that. A long door id never changes the
+QR length because the id is not part of it.
 
 ## Provisioning (NVS namespace `adc_sec`)
 

@@ -517,9 +517,10 @@ const got = (c, type, deviceId) => c.msgs.some(m => m.type === type && m.deviceI
     const qrBody = { iat: new Date(now).toISOString(), exp: new Date(now + 3600e3).toISOString() };
     const qr = await call(AA3.cookie, 'POST', `/api/devices/${d1}/temp-qr`, qrBody);
     const qrObj = qr.body && qr.body.qr_text ? JSON.parse(qr.body.qr_text) : {};
-    check('customer admin creates a temporary QR for their v2 door', qr.status === 200 && qrObj.v === 2 && qrObj.did === 'D1');
+    check('customer admin creates a temporary QR for their v2 door', qr.status === 200 && qrObj.v === 2 && !('did' in qrObj) && qrObj.hmac.length === 32);
+    check('QR fits the 112-byte reader frame', qr.body.qr_text.length <= 112);
     check('QR text starts with the prefix the firmware looks for', qr.body.qr_text.startsWith('{"v":2,'));
-    check('QR signature = HMAC(device key) over the door id', qrObj.hmac === crypto.createHmac('sha256', sig.deviceKey(D1row)).update(`v2tqr\nD1\n${qrObj.iat}\n${qrObj.exp}`).digest('hex'));
+    check('QR signature = HMAC(device key) over the door id', qrObj.hmac === crypto.createHmac('sha256', sig.deviceKey(D1row)).update(`v2tqr\nD1\n${qrObj.iat}\n${qrObj.exp}`).digest('hex').slice(0, 32));
     check('QR for a legacy door is refused -> 409', (await call(AA3.cookie, 'POST', `/api/devices/${d2}/temp-qr`, qrBody)).status === 409);
     check('QR for another customer door -> 404', (await call(AA3.cookie, 'POST', `/api/devices/${d3}/temp-qr`, qrBody)).status === 404);
     check('other customer cannot make a QR for D1 -> 404', (await call(BA3.cookie, 'POST', `/api/devices/${d1}/temp-qr`, qrBody)).status === 404);

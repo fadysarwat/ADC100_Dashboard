@@ -115,11 +115,15 @@ function buildCommand(device, cmd, fields = {}, opts = {}) {
     return payload;
 }
 
-/* Temporary QR for ONE device (v2 only). Returns the exact text to encode. */
+/* Temporary QR for ONE device (v2 only). Returns the exact text to encode.
+   The reader hands the door at most 112 bytes, so the QR is kept short (~85 bytes):
+   the door id is not inside (the door verifies with its OWN id, so a QR made for
+   another door fails) and the MAC is the first 128 bits of the HMAC-SHA256. */
+const QR_MAC_HEX = 32;
 function temporaryQr(device, iat, exp) {
     const id = deviceId(device);
-    const hmac = hmacHex(deviceKey(device), `v2tqr\n${id}\n${iat}\n${exp}`);
-    return JSON.stringify({ v: 2, did: id, iat, exp, hmac });
+    const hmac = hmacHex(deviceKey(device), `v2tqr\n${id}\n${iat}\n${exp}`).slice(0, QR_MAC_HEX);
+    return JSON.stringify({ v: 2, iat, exp, hmac });
 }
 
 /* Everything needed to provision a device (NVS namespace adc_sec). */
@@ -152,6 +156,6 @@ function buildProvisionCommand(device) {
 }
 
 module.exports = {
-    FIELDS, deviceKey, bleKey, v2Message, buildCommand, temporaryQr,
+    FIELDS, QR_MAC_HEX, deviceKey, bleKey, v2Message, buildCommand, temporaryQr,
     provisionBundle, buildProvisionCommand, deviceId
 };
