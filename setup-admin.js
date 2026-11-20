@@ -5,7 +5,13 @@ require('dotenv').config();
 
 async function setupAdmin() {
     const username = process.env.ADMIN_USERNAME || 'admin';
-    const password = process.env.ADMIN_PASSWORD || 'adc100admin';
+    const password = process.env.ADMIN_PASSWORD || (process.env.NODE_ENV === 'production' ? '' : 'adc100admin');
+
+    /* Never fall back to a known default password on a deployed server. */
+    if (!password || password.length < 10) {
+        console.error('ADMIN_PASSWORD must be set (min 10 chars) in production.');
+        process.exit(1);
+    }
 
     /* Make sure role/org columns exist before inserting. */
     await initDb();
