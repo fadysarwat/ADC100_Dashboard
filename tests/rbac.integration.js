@@ -100,20 +100,6 @@ const got = (c, type, deviceId) => c.msgs.some(m => m.type === type && m.deviceI
     /* ============ database setup (disposable) ============ */
     await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
     await pool.query(fs.readFileSync(path.join(ROOT, 'src/db/schema.sql'), 'utf8'));
-    /* Objects that exist on the live database but are not in schema.sql (created by hand). */
-    await pool.query(`
-        ALTER TABLE devices ADD COLUMN IF NOT EXISTS relay_mode VARCHAR(16) DEFAULT 'timed';
-        ALTER TABLE devices ADD COLUMN IF NOT EXISTS relay_duration INTEGER;
-        ALTER TABLE devices ADD COLUMN IF NOT EXISTS ble_name VARCHAR(64);
-        ALTER TABLE access_logs ADD COLUMN IF NOT EXISTS door_user_id INTEGER;
-        CREATE TABLE IF NOT EXISTS door_users (
-            id SERIAL PRIMARY KEY, name VARCHAR(128) NOT NULL, active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT NOW());
-        CREATE TABLE IF NOT EXISTS user_credentials (
-            id SERIAL PRIMARY KEY, user_id INTEGER REFERENCES door_users(id) ON DELETE CASCADE,
-            device_id INTEGER REFERENCES devices(id) ON DELETE CASCADE, type VARCHAR(8),
-            identifier VARCHAR(128), cred_data VARCHAR(128), created_at TIMESTAMP DEFAULT NOW(),
-            UNIQUE (device_id, type, cred_data));
-    `);
     await initDb();
 
     const hash = await bcrypt.hash('pw123456', 4);
