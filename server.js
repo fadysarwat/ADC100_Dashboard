@@ -27,6 +27,18 @@ const hub    = createHub();          /* authenticated, tenant-filtered WebSocket
 app.locals.hub = hub;
 const PORT   = process.env.PORT || 3000;
 
+/* Basic security headers on every response. (No Content-Security-Policy yet:
+   the pages use inline scripts; moving them out is a separate change.) */
+app.use((req, res, next) => {
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('X-Frame-Options', 'DENY');
+    res.set('Referrer-Policy', 'same-origin');
+    res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    if (process.env.NODE_ENV === 'production')
+        res.set('Strict-Transport-Security', 'max-age=15552000');
+    next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 const PROD = process.env.NODE_ENV === 'production';

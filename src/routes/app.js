@@ -11,6 +11,9 @@ if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
     process.exit(1);
 }
 const { bleKey } = require('../devicesig');
+const { createLoginLimiter } = require('../ratelimit');
+const limiter = createLoginLimiter();
+router.limiter = limiter;
 
 /* BLE key handed to the mobile app for one door.
    v2 doors: a key derived for THAT door only, sent as "hex:<64 hex>" (the app
@@ -24,8 +27,8 @@ const JWT_SECRET  = process.env.JWT_SECRET || 'dev-only-jwt-secret-not-for-produ
 const JWT_EXPIRES = '30d';
 
 /* ── POST /api/app/login ── */
-router.post('/login', async (req, res) => {
-    const { username, password } = req.body;
+router.post('/login', limiter.guard, async (req, res) => {
+    const { username, password } = req.body || {};
     if (!username || !password)
         return res.status(400).json({ error: 'username and password required' });
 
@@ -39,15 +42,20 @@ router.post('/login', async (req, res) => {
                 AND (u.org_id IS NULL OR o.is_active = TRUE)`,
             [username]
         );
-        if (userResult.rows.length === 0)
+        if (userResult.rows.length === 0) {
+            limiter.fail(req, username);
             return res.status(401).json({ error: 'Invalid credentials' });
+        }
 
         const user = userResult.rows[0];
 
         /* 2. Verify password */
         const match = await bcrypt.compare(password, user.password);
-        if (!match)
+        if (!match) {
+            limiter.fail(req, username);
             return res.status(401).json({ error: 'Invalid credentials' });
+        }
+        limiter.ok(req, username);
 
         /* 3. Get accessible doors */
         const doorsResult = await pool.query(

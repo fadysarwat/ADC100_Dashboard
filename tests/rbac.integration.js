@@ -543,6 +543,44 @@ const got = (c, type, deviceId) => c.msgs.some(m => m.type === type && m.deviceI
         ['device.migrate', 'device.provision.export', 'device.mark_v2', 'device.tempqr'].every(a => acts3.has(a)));
     check('audit never contains device keys', !JSON.stringify(aud3.body).includes(keyHex));
 
+    /* ============ 14. brute-force protection and headers ============ */
+    section('14. login rate limit and security headers');
+    const authRouter14 = require(path.join(ROOT, 'src/routes/auth'));
+    const appRouter14  = require(path.join(ROOT, 'src/routes/app'));
+    authRouter14.limiter.reset(); appRouter14.limiter.reset();
+    const rawLogin = (url, username, password) => fetch(base + url, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username, password })
+    });
+
+    let codes14 = [];
+    for (let i = 0; i < 5; i++) codes14.push((await rawLogin('/api/login', 'a_view', 'wrong-' + i)).status);
+    check('5 wrong passwords are answered 401', codes14.every(c => c === 401));
+    const blocked14 = await rawLogin('/api/login', 'a_view', 'wrong-again');
+    check('6th attempt is blocked -> 429', blocked14.status === 429);
+    check('blocked answer carries Retry-After', Number(blocked14.headers.get('retry-after')) > 0);
+    check('even the CORRECT password is refused while blocked -> 429', (await rawLogin('/api/login', 'a_view', 'pw123456')).status === 429);
+    const other14 = await rawLogin('/api/login', 'super', 'pw123456');
+    check('another user from the same address can still log in (got ' + other14.status + ')', other14.status === 200);
+    check('user name matching is case-insensitive for the limit', (await rawLogin('/api/login', 'A_VIEW', 'pw123456')).status === 429);
+
+    codes14 = [];
+    for (let i = 0; i < 5; i++) codes14.push((await rawLogin('/api/app/login', 'app_a', 'wrong-' + i)).status);
+    check('mobile login: 5 wrong passwords -> 401', codes14.every(c => c === 401));
+    check('mobile login: next attempt blocked -> 429', (await rawLogin('/api/app/login', 'app_a', 'pw123456')).status === 429);
+
+    authRouter14.limiter.reset(); appRouter14.limiter.reset();
+    for (let i = 0; i < 3; i++) await rawLogin('/api/login', 'a_view', 'wrong-' + i);
+    check('a successful login clears the counter for that user', (await rawLogin('/api/login', 'a_view', 'pw123456')).status === 200);
+    for (let i = 0; i < 4; i++) await rawLogin('/api/login', 'a_view', 'wrong-' + i);
+    check('...so 4 more wrong attempts do not block yet', (await rawLogin('/api/login', 'a_view', 'pw123456')).status === 200);
+
+    const pg14 = await fetch(base + '/login.html');
+    check('security headers are present',
+        pg14.headers.get('x-content-type-options') === 'nosniff' &&
+        pg14.headers.get('x-frame-options') === 'DENY' &&
+        !!pg14.headers.get('referrer-policy'));
+    authRouter14.limiter.reset(); appRouter14.limiter.reset();
+
     /* ============ summary ============ */
     console.log(`\n${pass} passed, ${fail} failed`);
     if (fail) console.log('Failed:\n - ' + failures.join('\n - '));

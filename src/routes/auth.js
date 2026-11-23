@@ -3,9 +3,12 @@ const bcrypt  = require('bcrypt');
 const router  = express.Router();
 const pool    = require('../db/pool');
 const { requireAuth, permsForRole } = require('../auth');
+const { createLoginLimiter } = require('../ratelimit');
+const limiter = createLoginLimiter();
+router.limiter = limiter;
 
 /* POST /api/login */
-router.post('/login', async (req, res) => {
+router.post('/login', limiter.guard, async (req, res) => {
     const { username, password } = req.body || {};
     if (!username || !password)
         return res.status(400).json({ error: 'Username and password required' });
@@ -22,13 +25,15 @@ router.post('/login', async (req, res) => {
 
         /* Same answer for unknown user, wrong password, disabled user and
            disabled customer: do not reveal which one it was. */
-        const invalid = () => res.status(401).json({ error: 'Invalid credentials' });
+        const invalid = () => { limiter.fail(req, username); return res.status(401).json({ error: 'Invalid credentials' }); };
 
         if (!user) return invalid();
         const match = await bcrypt.compare(password, user.password);
         if (!match) return invalid();
         if (!user.is_active) return invalid();
         if (user.org_id !== null && !user.org_active) return invalid();
+
+        limiter.ok(req, username);
 
         /* New session id on login (prevents session fixation). */
         req.session.regenerate((err) => {
@@ -40,7 +45,8 @@ router.post('/login', async (req, res) => {
             });
         });
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error('login error:', err.message);
+        res.status(500).json({ error: 'Server error' });
     }
 });
 
