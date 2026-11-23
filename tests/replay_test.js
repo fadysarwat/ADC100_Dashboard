@@ -74,4 +74,9 @@ client.on('message', (topic, buf) => {
     }, 50000);
 });
 
-client.on('error', (e) => { console.error('MQTT error:', e.message); });
+client.on('error', (e) => {
+    const parts = (e.errors && e.errors.length) ? e.errors : [e];
+    for (const x of parts) {
+        console.error('MQTT error:', x.code || '', x.message || '', x.address ? `${x.address}:${x.port}` : '');
+    }
+});
