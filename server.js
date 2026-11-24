@@ -22,6 +22,7 @@ const { startMqtt }     = require('./src/mqtt');
 const startMonitor      = require('./src/monitor');
 
 const app    = express();
+app.disable('x-powered-by');
 const server = http.createServer(app);
 const hub    = createHub();          /* authenticated, tenant-filtered WebSocket (src/ws.js) */
 app.locals.hub = hub;
