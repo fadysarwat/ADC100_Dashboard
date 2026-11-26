@@ -617,6 +617,27 @@ const got = (c, type, deviceId) => c.msgs.some(m => m.type === type && m.deviceI
     check('...and last_seen is refreshed', age15 < 5);
     await pool.query("UPDATE devices SET status = 'offline' WHERE id = $1", [d1]);
 
+    /* ============ 16. events that waited offline ============ */
+    section('16. events kept by the device while offline');
+    const { eventAgeSeconds, MAX_AGE_S } = require('../src/event_time');
+    check('a live event has no age', eventAgeSeconds({ event: 'access', result: 'GRANTED' }) === 0);
+    check('a queued event gives its age in seconds', eventAgeSeconds({ queued: true, age_s: 112 }) === 112);
+    check('age_s without queued:true is ignored', eventAgeSeconds({ age_s: 500 }) === 0);
+    check('a negative age is ignored', eventAgeSeconds({ queued: true, age_s: -5 }) === 0);
+    check('a non-numeric age is ignored', eventAgeSeconds({ queued: true, age_s: 'abc' }) === 0);
+    check('an absurd age is capped at one week', eventAgeSeconds({ queued: true, age_s: 99999999 }) === MAX_AGE_S);
+    check('a fractional age is rounded down', eventAgeSeconds({ queued: true, age_s: 10.9 }) === 10);
+
+    const ins16 = await pool.query(
+        `INSERT INTO access_logs (device_id, method, result, created_at)
+         VALUES ($1, 'RFID', 'DENIED_OUTSIDE_WINDOW', NOW() - make_interval(secs => $2::double precision))
+         RETURNING EXTRACT(EPOCH FROM (NOW() - created_at)) AS age`,
+        [d1, 120]
+    );
+    check('the long result DENIED_OUTSIDE_WINDOW is accepted', !!ins16.rows[0]);
+    check('the stored time is the moment it happened (120 s ago)', Math.abs(ins16.rows[0].age - 120) < 5);
+    await pool.query("DELETE FROM access_logs WHERE device_id = $1 AND result = 'DENIED_OUTSIDE_WINDOW'", [d1]);
+
     /* ============ summary ============ */
     console.log(`\n${pass} passed, ${fail} failed`);
     if (fail) console.log('Failed:\n - ' + failures.join('\n - '));

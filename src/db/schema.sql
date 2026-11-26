@@ -140,6 +140,9 @@ ALTER TABLE heartbeats   ADD COLUMN IF NOT EXISTS schedule_start   TEXT;
 ALTER TABLE heartbeats   ADD COLUMN IF NOT EXISTS schedule_end     TEXT;
 ALTER TABLE heartbeats   ADD COLUMN IF NOT EXISTS mqtt_reconnects  INTEGER;
 
+/* Event results such as DENIED_OUTSIDE_WINDOW (21 chars) did not fit VARCHAR(16). */
+ALTER TABLE access_logs ALTER COLUMN result TYPE VARCHAR(32);
+
 /* Presence: when the device was last heard from, and every period it was offline. */
 ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP;
 UPDATE devices SET last_seen = (SELECT MAX(h.created_at) FROM heartbeats h WHERE h.device_id = devices.id)

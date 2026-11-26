@@ -1,6 +1,7 @@
 const mqtt   = require('mqtt');
 const pool   = require('./db/pool');
 const { markSeen, openOutage } = require('./presence');
+const { eventAgeSeconds } = require('./event_time');
 require('dotenv').config();
 
 let client    = null;
@@ -217,14 +218,18 @@ function startMqtt(broadcastFn) {
                 /* Access events — save to DB and broadcast */
                 let method = payload.method;
 
+                /* Events kept by the device while offline arrive late: use the time
+                   they really happened, not the time they arrived. */
+                const ageS = eventAgeSeconds(payload);
+
                 /* Check if PIN is a temp PIN */
                 if (method === 'PIN' && payload.result === 'GRANTED') {
                     const tempCheck = await pool.query(
                         `SELECT id FROM temp_pins
                         WHERE device_id = $1
                         AND active = TRUE
-                        AND NOW() BETWEEN iat AND exp`,
-                        [device.id]
+                        AND (NOW() - make_interval(secs => $2::double precision)) BETWEEN iat AND exp`,
+                        [device.id, ageS]
                     );
                     if (tempCheck.rows.length > 0) {
                         method = 'TEMP_PIN';
@@ -249,12 +254,13 @@ function startMqtt(broadcastFn) {
                 }
 
                 const evResult = await pool.query(
-                    `INSERT INTO access_logs (device_id, method, result, door_user_id)
-                    VALUES ($1, $2, $3, $4) RETURNING *`,
-                    [device.id, method, payload.result, doorUserId]
+                    `INSERT INTO access_logs (device_id, method, result, door_user_id, created_at)
+                    VALUES ($1, $2, $3, $4, NOW() - make_interval(secs => $5::double precision)) RETURNING *`,
+                    [device.id, method, payload.result, doorUserId, ageS]
                 );
 
-                console.log(`Access event from ${mqttId} — ${payload.method}: ${payload.result}`);
+                console.log(`Access event from ${mqttId} — ${payload.method}: ${payload.result}` +
+                            (ageS ? ` (queued, happened ${ageS}s ago)` : ''));
 
                 /* Fetch log row with user_name for live broadcast */
                 const logWithUser = await pool.query(
