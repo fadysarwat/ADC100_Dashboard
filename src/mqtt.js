@@ -1,5 +1,6 @@
 const mqtt   = require('mqtt');
 const pool   = require('./db/pool');
+const { markSeen, openOutage } = require('./presence');
 require('dotenv').config();
 
 let client    = null;
@@ -109,6 +110,7 @@ function startMqtt(broadcastFn) {
                     'UPDATE devices SET status = $1, activated = TRUE WHERE id = $2',
                     ['online', device.id]
                 );
+                await markSeen(device.id);
 
                 const hbResult = await pool.query(
                     `INSERT INTO heartbeats
@@ -152,6 +154,8 @@ function startMqtt(broadcastFn) {
                     'UPDATE devices SET status = $1 WHERE id = $2',
                     [payload.status === 'online' ? 'online' : 'offline', device.id]
                 );
+                if (payload.status === 'online') await markSeen(device.id);
+                else await openOutage(device.id, device.last_seen);
 
                 if (broadcast) {
                     broadcast({

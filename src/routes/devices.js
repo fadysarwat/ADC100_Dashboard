@@ -301,6 +301,24 @@ router.get('/:id/heartbeats', requireDevice('device.view'), async (req, res) => 
     }
 });
 
+/* GET outage history (when the device went offline, when it came back) */
+router.get('/:id/outages', requireDevice('device.view'), async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT id, started_at, ended_at,
+                    EXTRACT(EPOCH FROM (COALESCE(ended_at, NOW()) - started_at))::int AS seconds
+               FROM device_outages
+              WHERE device_id = $1
+              ORDER BY started_at DESC
+              LIMIT 50`,
+            [req.params.id]
+        );
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 /* GET device access logs with filters */
 router.get('/:id/logs', requireDevice('logs.view'), async (req, res) => {
     try {

@@ -139,3 +139,18 @@ ALTER TABLE heartbeats   ADD COLUMN IF NOT EXISTS schedule_enabled BOOLEAN;
 ALTER TABLE heartbeats   ADD COLUMN IF NOT EXISTS schedule_start   TEXT;
 ALTER TABLE heartbeats   ADD COLUMN IF NOT EXISTS schedule_end     TEXT;
 ALTER TABLE heartbeats   ADD COLUMN IF NOT EXISTS mqtt_reconnects  INTEGER;
+
+/* Presence: when the device was last heard from, and every period it was offline. */
+ALTER TABLE devices ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP;
+UPDATE devices SET last_seen = (SELECT MAX(h.created_at) FROM heartbeats h WHERE h.device_id = devices.id)
+ WHERE last_seen IS NULL;
+
+CREATE TABLE IF NOT EXISTS device_outages (
+    id         SERIAL PRIMARY KEY,
+    device_id  INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    started_at TIMESTAMP NOT NULL,
+    ended_at   TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_device_outages_dev ON device_outages (device_id, started_at DESC);
+/* at most one open outage per device */
+CREATE UNIQUE INDEX IF NOT EXISTS uq_device_outage_open ON device_outages (device_id) WHERE ended_at IS NULL;

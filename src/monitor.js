@@ -2,6 +2,7 @@ const pool    = require('./db/pool');
 const { buildCommand } = require('./devicesig');
 const crypto  = require('crypto');
 const { publish } = require('./mqtt');
+const { detectOffline } = require('./presence');
 require('dotenv').config();
 
 function startMonitor(broadcast) {
@@ -9,24 +10,16 @@ function startMonitor(broadcast) {
     setInterval(async () => {
         try {
             /* ── Device offline detection ── */
-            const offlineResult = await pool.query(
-                `UPDATE devices SET status = 'offline'
-                 WHERE status = 'online'
-                 AND id NOT IN (
-                     SELECT DISTINCT device_id FROM heartbeats
-                     WHERE created_at > NOW() - INTERVAL '5 minutes'
-                 )
-                 RETURNING id, serial`
-            );
+            const offlineRows = await detectOffline();
 
-            offlineResult.rows.forEach(device => {
+            offlineRows.forEach(device => {
                 console.log(`Device offline: ${device.serial}`);
                 if (broadcast) {
                     broadcast({
                         type:     'status',
                         serial:   device.serial,
                         deviceId: device.id,
-                        data:     { status: 'offline' }
+                        data:     { status: 'offline', last_seen: device.last_seen }
                     });
                 }
             });

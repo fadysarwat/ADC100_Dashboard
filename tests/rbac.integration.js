@@ -581,6 +581,42 @@ const got = (c, type, deviceId) => c.msgs.some(m => m.type === type && m.deviceI
         !!pg14.headers.get('referrer-policy'));
     authRouter14.limiter.reset(); appRouter14.limiter.reset();
 
+    section('15. last seen and outage history');
+    const presence15 = require(path.join(ROOT, 'src/presence'));
+    await pool.query("UPDATE devices SET status = 'online', last_seen = NOW() - INTERVAL '30 minutes' WHERE id = $1", [d1]);
+    await pool.query('DELETE FROM heartbeats WHERE device_id = $1', [d1]);
+    await pool.query('DELETE FROM device_outages WHERE device_id = $1', [d1]);
+
+    const gone15 = await presence15.detectOffline();
+    check('a device with no heartbeat for 5 minutes is marked offline', gone15.some(r => r.id === d1));
+    const st15 = (await pool.query('SELECT status FROM devices WHERE id = $1', [d1])).rows[0].status;
+    check('...its status is offline', st15 === 'offline');
+    let out15 = (await pool.query('SELECT * FROM device_outages WHERE device_id = $1', [d1])).rows;
+    check('exactly one open outage was recorded', out15.length === 1 && out15[0].ended_at === null);
+    const gap15 = Math.abs((await pool.query(
+        'SELECT EXTRACT(EPOCH FROM (o.started_at - d.last_seen)) AS gap FROM device_outages o JOIN devices d ON d.id = o.device_id WHERE d.id = $1', [d1])).rows[0].gap);
+    check('the outage starts at the last time the device was seen, not at detection time', gap15 < 1);
+
+    await presence15.detectOffline();
+    await presence15.openOutage(d1, new Date());
+    out15 = (await pool.query('SELECT * FROM device_outages WHERE device_id = $1', [d1])).rows;
+    check('repeating detection never creates a second open outage', out15.length === 1);
+
+    const list15 = await call(AA.cookie, 'GET', '/api/devices');
+    const row15  = Array.isArray(list15.body) ? list15.body.find(x => x.serial === 'D1') : null;
+    check('the device list carries last_seen', !!(row15 && row15.last_seen));
+    const o15 = await call(AA.cookie, 'GET', `/api/devices/${d1}/outages`);
+    check('A admin reads the outage history of own device -> 200', o15.status === 200 && o15.body.length === 1);
+    check('...it is still open and lasted at least 29 minutes', o15.body[0].ended_at === null && o15.body[0].seconds >= 29 * 60);
+    check('A admin cannot read the outage history of B device -> 404', (await call(AA.cookie, 'GET', `/api/devices/${d3}/outages`)).status === 404);
+
+    await presence15.markSeen(d1);
+    const o15b = await call(AA.cookie, 'GET', `/api/devices/${d1}/outages`);
+    check('when the device is heard again the outage is closed', o15b.body.length === 1 && o15b.body[0].ended_at !== null);
+    const age15 = (await pool.query('SELECT EXTRACT(EPOCH FROM (NOW() - last_seen)) AS age FROM devices WHERE id = $1', [d1])).rows[0].age;
+    check('...and last_seen is refreshed', age15 < 5);
+    await pool.query("UPDATE devices SET status = 'offline' WHERE id = $1", [d1]);
+
     /* ============ summary ============ */
     console.log(`\n${pass} passed, ${fail} failed`);
     if (fail) console.log('Failed:\n - ' + failures.join('\n - '));

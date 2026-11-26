@@ -474,7 +474,17 @@
                         <div class="stat-label">MQTT Reconnects</div>
                         <div class="stat-value" id="hbMqttRecon">—</div>
                     </div>
+                    <div class="stat">
+                        <div class="stat-label">Last Seen</div>
+                        <div class="stat-value" id="hbLastSeen">—</div>
+                    </div>
                 </div>
+
+                <h3 style="margin-top:18px;">Offline history</h3>
+                <table class="logs-table">
+                    <thead><tr><th>Went offline</th><th>Back online</th><th>Duration</th></tr></thead>
+                    <tbody id="outagesBody"><tr><td colspan="3" class="empty-logs">No outages recorded</td></tr></tbody>
+                </table>
             </div>
 
             <!-- Commands -->
@@ -796,9 +806,9 @@
                 const msg = JSON.parse(e.data);
                 if (msg.deviceId != deviceId) return;
 
-                if (msg.type === 'heartbeat') updateHealth(msg.data);
+                if (msg.type === 'heartbeat') { updateHealth(msg.data); onSeen(); }
                 if (msg.type === 'event')     prependLog(msg.data);
-                if (msg.type === 'status')    updateStatus(msg.data.status);
+                if (msg.type === 'status')    onStatusMessage(msg.data);
                 if (msg.type === 'wifi')      handleWifiEvent(msg.data);
                 if (msg.type === 'logs')      renderDevLogs(msg.data);
             };
@@ -859,6 +869,69 @@
             const badge = document.getElementById('devStatus');
             badge.textContent = status.toUpperCase();
             badge.className   = 'badge ' + (status === 'online' ? 'badge-online' : 'badge-offline');
+            currentStatus = status;
+            renderLastSeen();
+        }
+
+        /* ── Last seen / offline history ── */
+        let currentStatus = null;
+        let lastSeenAt    = null;      /* Date, server time */
+
+        function fmtDuration(sec) {
+            sec = Math.max(0, Math.round(sec));
+            const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600),
+                  m = Math.floor((sec % 3600) / 60), s = sec % 60;
+            if (d) return `${d}d ${h}h ${m}m`;
+            if (h) return `${h}h ${m}m`;
+            if (m) return `${m}m ${s}s`;
+            return `${s}s`;
+        }
+
+        function renderLastSeen() {
+            const el = document.getElementById('hbLastSeen');
+            if (!el) return;
+            if (currentStatus === 'online') {
+                el.textContent = 'Now';
+                el.className   = 'stat-value green';
+            } else if (lastSeenAt) {
+                const ago = (Date.now() - lastSeenAt.getTime()) / 1000;
+                el.textContent = `${lastSeenAt.toLocaleString()} (${fmtDuration(ago)} ago)`;
+                el.className   = 'stat-value red';
+            } else {
+                el.textContent = '—';
+                el.className   = 'stat-value';
+            }
+        }
+        setInterval(renderLastSeen, 30000);
+
+        function onSeen() {
+            const wasOffline = currentStatus !== 'online';
+            lastSeenAt = new Date();
+            updateStatus('online');
+            if (wasOffline) loadOutages();
+        }
+
+        function onStatusMessage(data) {
+            if (data.last_seen) lastSeenAt = new Date(data.last_seen);
+            updateStatus(data.status);
+            loadOutages();
+        }
+
+        async function loadOutages() {
+            const res  = await fetch(`/api/devices/${deviceId}/outages`);
+            if (!res.ok) return;
+            const rows = await res.json();
+            const body = document.getElementById('outagesBody');
+            if (!rows.length) {
+                body.innerHTML = '<tr><td colspan="3" class="empty-logs">No outages recorded</td></tr>';
+                return;
+            }
+            body.innerHTML = rows.map(o => `
+                <tr>
+                    <td>${new Date(o.started_at).toLocaleString()}</td>
+                    <td>${o.ended_at ? new Date(o.ended_at).toLocaleString() : '<span style="color:#FF4C4C">still offline</span>'}</td>
+                    <td>${fmtDuration(o.seconds)}</td>
+                </tr>`).join('');
         }
 
         /* ── Prepend log row ── */
@@ -897,6 +970,7 @@
             document.getElementById('devLocation').textContent    = device.location  || '—';
             document.getElementById('notesArea').value            = device.notes    || '';
             document.getElementById('bleCurrentName').textContent = device.ble_name || '—';
+            lastSeenAt = device.last_seen ? new Date(device.last_seen) : null;
             updateStatus(device.status);
 
             const mode = device.relay_mode || 'timed';
@@ -1468,6 +1542,7 @@ document.getElementById('qrimg').onload = function() {
             await RBAC.ready;
             if ((await loadDevice()) === false) return;   /* not yours / not found: stop, we are redirecting */
             await loadHeartbeat();
+            await loadOutages();
             if (RBAC.can('logs.view'))        await loadLogs();
             if (RBAC.can('credentials.view')) await loadCredentials();
             if (RBAC.can('device.assign'))    await loadAssignOrg();

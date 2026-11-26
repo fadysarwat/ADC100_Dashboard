@@ -381,9 +381,20 @@
                                    : 'PENDING';
                     badge.className   = newClass;
                     badge.textContent = newText;
+                    setSeenLine(d.id, d.status, d.activated, d.last_seen);
                 });
                 devices = data;
             }
+        }
+
+        /* "Last seen" line on a device card, shown only while the device is offline */
+        function seenText(status, activated, lastSeen) {
+            if (status === 'online' || !activated || !lastSeen) return '';
+            return 'Last seen: ' + new Date(lastSeen).toLocaleString();
+        }
+        function setSeenLine(id, status, activated, lastSeen) {
+            const el = document.getElementById(`seen-${id}`);
+            if (el) el.textContent = seenText(status, activated, lastSeen);
         }
 
         function renderDevices() {
@@ -428,6 +439,7 @@
                             <span>📍 ${esc(d.location || '—')}</span>
                             <span>📅 Added: ${new Date(d.created_at).toLocaleDateString()}</span>
                         </div>
+                        <div class="device-serial" id="seen-${d.id}" style="color:#FF4C4C">${seenText(d.status, d.activated, d.last_seen)}</div>
                         <div class="device-actions">
                             <button class="btn btn-primary btn-sm" onclick="window.location='device.html?id=${Number(d.id)}&serial=${encodeURIComponent(d.serial)}'">Details</button>
                             ${activateBtn}
@@ -449,6 +461,7 @@
                     const status = msg.type === 'heartbeat' ? 'online' : msg.data.status;
                     badge.className   = status === 'online' ? 'badge badge-online' : 'badge badge-offline';
                     badge.textContent = status === 'online' ? 'ONLINE' : 'OFFLINE';
+                    setSeenLine(msg.deviceId, status, true, msg.type === 'status' ? msg.data.last_seen : null);
                 }
             };
             ws.onclose = () => RBAC.afterWsClose(connectWS);
